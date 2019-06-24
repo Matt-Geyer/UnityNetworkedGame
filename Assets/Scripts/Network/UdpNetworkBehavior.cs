@@ -204,21 +204,8 @@ public class UdpNetworkBehavior : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-
-        byte f = 224;
-        int c = 32;
-
-        byte end = f;
-        end += (byte)c;
-        end--;
-
-        Debug.Log($"End is {end}");
-
-
-
         // Game server reactor init
         R_GameServer.Initialize(Debug.unityLogger);
-
 
         // UDP Socket Listener/Sender initialization
         _Socket = new UdpSocket();
@@ -236,7 +223,6 @@ public class UdpNetworkBehavior : MonoBehaviour
             new BusySpinWaitStrategy());
         _ReceivedMessagePoller = _ReceivedMessageBuffer.NewPoller();
         _ReceivedMessageBuffer.AddGatingSequences(_ReceivedMessagePoller.Sequence);
-
 
         _OutgoingMessageBuffer = RingBuffer<OutgoingUdpMessage>.Create(
             ProducerType.Single,

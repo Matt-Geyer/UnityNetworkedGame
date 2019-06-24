@@ -12,34 +12,138 @@ using Unity.Jobs;
 using UnityEngine;
 
 
+/// <summary>
+/// Represents a flag where each bit position represents whether or not a sequence was acked
+/// If the bit was set it was ACKed otherwise it was NACKed 
+/// TODO: Add DEBUG conditional checks on the data
+/// </summary>
+public struct SeqAckFlag
+{
+    public const int AckFlagSize = 32;
+    public const uint LastBitTrueMask = (uint)(1) << 31;
+    public uint Data;
+    public byte Seq_Start;
+    public byte Seq_Count;
+    public byte Seq_End;
+
+    public void Serialize(NetDataWriter writer)
+    {
+        writer.Put(Seq_Count);
+        if (Seq_Count > 0)
+        {
+            writer.Put(Seq_Start);
+            writer.Put(Data);
+        }
+    }
+
+    public void Deserialize(NetDataReader reader)
+    {
+        Seq_Count = reader.GetByte();
+        if (Seq_Count > 0)
+        {
+            Seq_Start = reader.GetByte();
+            Data = reader.GetUInt();
+            Seq_End = (byte)(Seq_Start + Seq_Count - 1);
+        }
+    }
+
+    public void InitFromData(uint data, byte start, byte count)
+    {
+        Data = data;
+        Seq_Start = start;
+        Seq_Count = count;
+        Seq_End = (byte)(start + count - 1);
+    }
+
+    public void InitWithAckedSequence(byte seq)
+    {
+        Seq_Start = Seq_End = seq;
+        Data = 1;
+        Seq_Count = 1;
+    }
+
+    public bool IsAck(int seqBitPositionInFlag)
+    {
+        return ((Data >> seqBitPositionInFlag) & 1) == 1;
+    }
+
+    public void NackNextSequence()
+    {
+        if (Seq_Count < AckFlagSize)
+        {
+            Data &= (uint)~(1 << Seq_Count);
+            Seq_Count++;
+            Seq_End++;
+        }
+        else
+        {
+            Data = Data >> 1;
+            Seq_Start++;
+            Seq_End++;
+        }
+    }
+
+    public void AckNextSequence()
+    {
+        if (Seq_Count < AckFlagSize)
+        {
+            Data |= (uint)1 << Seq_Count;
+            Seq_Count++;
+            Seq_End++;
+        }
+        else
+        {
+            Data = Data >> 1 | LastBitTrueMask;
+            Seq_Start++;
+            Seq_End++;
+        }
+    }
+
+    /// <summary>
+    /// Seq must be within (seq_start, seq_end) or this will fuck up
+    /// </summary>
+    /// <param name="seq"></param>
+    public void DropUntilStartSeqEquals(byte seq)
+    {
+        while (Seq_Start != seq)
+        {
+            DropStartSequence();
+        }
+    }
+
+    public void DropStartSequence()
+    {
+        Data = Data >> 1;
+        Seq_Start++;
+        Seq_Count--;
+        // end seq stays the same
+    }
+
+    public override string ToString()
+    {
+        return $"Seq_Count: {Seq_Count}  Seq_Start: {Seq_Start}  Seq_End: {Seq_End}  Data: {Data}";
+    }
+}
+
+
 public struct PacketHeader
 {
     public byte Seq;
-    public byte AckFlag_StartSeq;
-    public ushort AckFlag_SeqCount;
-    public uint AckFlag;
+
+    public SeqAckFlag AckFlag;
+
     public byte DataFlag; 
 
     public void Deserialize(NetDataReader reader)
     {
         Seq = reader.GetByte();
-        AckFlag_SeqCount = reader.GetUShort();
-        if (AckFlag_SeqCount > 0)
-        {
-            AckFlag_StartSeq = reader.GetByte();
-            AckFlag = reader.GetUInt();
-        }
+        AckFlag.Deserialize(reader);
     }
 
     public void Serialize(NetDataWriter writer)
     {
         writer.Put(Seq);
-        writer.Put(AckFlag_SeqCount);
-        if (AckFlag_SeqCount > 0)
-        {
-            writer.Put(AckFlag_StartSeq);
-            writer.Put(AckFlag);
-        }
+        AckFlag.Serialize(writer);
     }
 }
 
@@ -63,11 +167,11 @@ public struct NewPacket
 public class PacketTransmissionRecord
 {
     // Packet stream system data
-    public byte Seq;
-    public byte AckFlag_StartSeq;
-    public ushort AckFlag_SeqCount;
-    public uint AckFlag;
+    public byte Seq; 
+    public SeqAckFlag AckFlag;
     public bool Received;
+
+
 
     // manager data
 }
@@ -83,11 +187,7 @@ public class PacketStreamSystem
     // The latest sequence that we have received from the remote stream
     public byte Seq_Remote = 0;
 
-    public uint RemoteSequencesAckedFlag;                          // The flag that holds the data (todo 64 bit or maybe even bitvector)
-    public byte RemoteSequencesAckedFlag_StartSeq;                 // the sequence associated with bit position 0 in the flag
-    public int RemoteSequenceAckedFlag_SeqCount;                   // # of sequences present in the flag
-    public byte RemoteSequencesAckedFlag_EndSeq;                   // The sequence associated with the last bit in the flag (calculated and not sent)
-    private const int RemoteSequencesAckedFlag_MaxSeqCount = 32;   // max # of possible sequences (bits) in the flag
+    public SeqAckFlag RemoteSeqAckFlag;
 
     // This will be filled externally with the DataReceived NetEvents from socket for this peer
     public readonly List<NetEvent> DataReceivedEvents;
@@ -118,6 +218,7 @@ public class PacketStreamSystem
         NetWriter = new NetDataWriter(false, 1500);
         Peer = _peer ?? throw new ArgumentNullException("peer");
         PacketBuffer = new NewPacket[100];
+        RemoteSeqAckFlag = new SeqAckFlag();
     }
 
     public void Update()
@@ -136,77 +237,36 @@ public class PacketStreamSystem
             sb.AppendLine($"Received {DataReceivedEvents.Count} packets");
             for (int i = 0; i < DataReceivedEvents.Count; i++)
             {
+                // Get data reader from evt which contains the binary data for the packet
                 NetPacketReader reader = DataReceivedEvents[i].DataReader;
+                // Deserialize packet (including header)
                 PacketBuffer[i].Deserialize(reader, true);
-
+                                
                 var header = PacketBuffer[i].Header;
-
-                byte endSeq = RemoteSequencesAckedFlag_StartSeq;
-                endSeq += (byte)RemoteSequenceAckedFlag_SeqCount;
-                endSeq--;
-
-                byte a = byte.MaxValue - 32;
-                byte b = byte.MaxValue;
-                b -= endSeq;
-                byte c = 32;
-                c -= b;
-   
-                sb.AppendLine($"Remote Packet Sequence: {header.Seq}");               
-                sb.AppendLine($"AckFlag: {header.AckFlag}");
-                sb.AppendLine($"AckStart: {header.AckFlag_StartSeq}");
-                sb.AppendLine($"AckEnd: {(byte)(header.AckFlag_StartSeq + (byte)(header.AckFlag_SeqCount - 1))}");
-                sb.AppendLine($"AckCount: {header.AckFlag_SeqCount} ");
-                sb.AppendLine($"RemoteAckedFlag EndSeq - before: {endSeq}");
-                sb.AppendLine($"a: {a} b: {b} c: {c}");
-
-                if (RemoteSequenceAckedFlag_SeqCount == 0)
+                sb.AppendLine($"Received Packet Sequence: {header.Seq}");               
+                sb.AppendLine($"Packet AckFlag: {header.AckFlag}");               
+                sb.AppendLine($"Local AckedFlag- before: {RemoteSeqAckFlag}");
+     
+                if (RemoteSeqAckFlag.Seq_Count == 0)
                 {
-                    RemoteSequencesAckedFlag = 1;
-                    RemoteSequencesAckedFlag_StartSeq = header.Seq;
-                    RemoteSequenceAckedFlag_SeqCount = 1;
-                }
-                // The seq is ahead of the range of our flag (ie a new seq) if either of these things are true
-                else if ((header.Seq > endSeq && (header.Seq - endSeq <= 32)) ||
-                         (header.Seq < endSeq && (endSeq > a && header.Seq <= c)))
+                    // No sequences in the flag so just initialize it with this sequence being acked
+                    RemoteSeqAckFlag.InitWithAckedSequence(header.Seq);
+                }               
+                else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_End, header.Seq)) 
                 {
-                    while (endSeq != (byte)(header.Seq - 1))
-                    {
-                        // Ack flag isn't full so clear the next position and increment the seq count
-                        if (RemoteSequenceAckedFlag_SeqCount < RemoteSequencesAckedFlag_MaxSeqCount)
-                        {
-                            RemoteSequencesAckedFlag &= (uint)~(1 << RemoteSequenceAckedFlag_SeqCount);
-                            RemoteSequenceAckedFlag_SeqCount++;
-                        }
-                        // Ack flag is full so shift right which pops the start sequence off leaving a 0
-                        // in the last bit position
-                        else
-                        {
-                            RemoteSequencesAckedFlag = RemoteSequencesAckedFlag >> 1;
-                            RemoteSequencesAckedFlag_StartSeq++;
-                        }
+                    sb.AppendLine($"Received sequence {header.Seq} is ahead of the last sequence in our ack flag: {RemoteSeqAckFlag.Seq_End}");
 
-                        endSeq = RemoteSequencesAckedFlag_StartSeq;
-                        endSeq += (byte)RemoteSequenceAckedFlag_SeqCount;
-                        endSeq--;
-                        sb.AppendLine($"NACKing sequence {endSeq}");
+                    // The seq is ahead of the range of our flag (ie a new seq) but we want to NACK any that 
+                    // sequences that are in between the last sequence we acked, and this sequence we are now receiving
+                    // since they must have been dropped (or delivered out of order)
+                    while (RemoteSeqAckFlag.Seq_End != (byte)(header.Seq - 1))
+                    {
+                        RemoteSeqAckFlag.NackNextSequence();
+                        sb.AppendLine($"NACKed sequence {RemoteSeqAckFlag.Seq_End}");
                     }
 
-                    // ack this seq in flag and flag end is now this seq
-                    if (RemoteSequenceAckedFlag_SeqCount < 32)
-                    {
-                        RemoteSequencesAckedFlag |= (uint)1 << RemoteSequenceAckedFlag_SeqCount;
-                        RemoteSequenceAckedFlag_SeqCount++;
-                    }
-                    else
-                    {
-                        RemoteSequencesAckedFlag = RemoteSequencesAckedFlag >> 1 | (uint)1 << 31;
-                        RemoteSequencesAckedFlag_StartSeq++;
-                    }
-
-                    endSeq = RemoteSequencesAckedFlag_StartSeq;
-                    endSeq += (byte)RemoteSequenceAckedFlag_SeqCount;
-                    endSeq--;
-                    sb.AppendLine($"RemoteAckedFlag EndSeq - after: {endSeq}");
+                    // Ack this sequence in our flag
+                    RemoteSeqAckFlag.AckNextSequence();
                 }
                 else
                 {
@@ -216,83 +276,46 @@ public class PacketStreamSystem
                     continue;
                 }
 
-                // Notifications..
-                if (header.AckFlag_SeqCount > 0)
+                // Generate notifications based on ACKs received from the remote stream
+                if (header.AckFlag.Seq_Count > 0)
                 {
                     if (Seq_LastNotified == -1)
                     {
-
-                        PacketTransmissionRecord record;
-                        while (TransmissionRecords.Peek().Seq != header.AckFlag_StartSeq)
+                        sb.AppendLine("Initializing Seq_LastNotified");
+                        // This is the start of us notifying packets.. if any packets were sent but aren't
+                        // included in this ack flag then they must have been dropped
+                        while (TransmissionRecords.Peek().Seq != header.AckFlag.Seq_Start)
                         {
-                            record = TransmissionRecords.Dequeue();
+                            PacketTransmissionRecord record = TransmissionRecords.Dequeue();
                             Seq_LastNotified = record.Seq;
                             record.Received = false;
                             TransmissionNotifications.Enqueue(record);
+                            sb.AppendLine($"Seq {record.Seq} was dropped");
                         }
-
-                        for (int x = 0; x < header.AckFlag_SeqCount; x++)
-                        {
-                            record = TransmissionRecords.Dequeue();
-                            record.Received = ((header.AckFlag >> x) & 1) == 1;
-                            TransmissionNotifications.Enqueue(record);
-                            Seq_LastNotified++;
-                            Seq_LastNotified = Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
-                            //sb.AppendLine($"Seq: {record.Seq} Seq_LastNotified: {Seq_LastNotified} Received: {record.Received}");
-                        }
+                        
+                        GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }
-
-                    else if (header.AckFlag_StartSeq > Seq_LastNotified && (Seq_LastNotified > 32 || (header.AckFlag_StartSeq < byte.MaxValue - 32)) ||
-                            (header.AckFlag_StartSeq < Seq_LastNotified && (Seq_LastNotified > byte.MaxValue - 32 && header.AckFlag_StartSeq < 32)))
+                    else if (SeqIsAheadButInsideWindow32((byte)Seq_LastNotified, header.AckFlag.Seq_Start))
                     {
-
                         // NACK all packets up until the start of this ACK flag because they must have been lost or delivered out of order
-                        while (Seq_LastNotified != (byte)(header.AckFlag_StartSeq - 1))
+                        while (Seq_LastNotified != (byte)(header.AckFlag.Seq_Start - 1))
                         {
                             PacketTransmissionRecord r = TransmissionRecords.Dequeue();
                             r.Received = false;
                             TransmissionNotifications.Enqueue(r);
-                            Seq_LastNotified++;
-                            Seq_LastNotified = Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
-                            //sb.AppendLine($"Seq: {r.Seq} Seq_LastNotified: {Seq_LastNotified} Received: {r.Received}");
+                            Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
+                            sb.AppendLine($"Sequence: {Seq_LastNotified} was dropped");
                         }
-                        // Now N/ACK all packets based on this ACK flag because it contains entirely new data
-                        for (int x = 0; x < header.AckFlag_SeqCount; x++)
-                        {
-                            PacketTransmissionRecord r = TransmissionRecords.Dequeue();
-                            r.Received = ((header.AckFlag >> x) & 1) == 1;
-                            TransmissionNotifications.Enqueue(r);
-                            Seq_LastNotified++;
-                            Seq_LastNotified = Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
-                            //sb.AppendLine($"Seq: {r.Seq} Seq_LastNotified: {Seq_LastNotified} Received: {r.Received}");
-                        }
-                    }
-                    else if (
-                        header.AckFlag_StartSeq <= Seq_LastNotified ||
-                        (header.AckFlag_StartSeq > Seq_LastNotified && header.AckFlag_StartSeq >= byte.MaxValue - 32))
+
+                        GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
+                    }                   
+                    else if (SeqIsInsideRange(header.AckFlag.Seq_Start, header.AckFlag.Seq_End, (byte)Seq_LastNotified))
                     {
-                        // some of the packets from this flag have already been notified
-                        byte sln_plus_one = (byte)Seq_LastNotified;
-                        sln_plus_one++;
-
-                        while (header.AckFlag_StartSeq != sln_plus_one && header.AckFlag_SeqCount > 0)
-                        {
-                            header.AckFlag = header.AckFlag >> 1;
-                            header.AckFlag_StartSeq++;
-                            header.AckFlag_SeqCount--;
-                        }
-
-                        for (int x = 0; x < header.AckFlag_SeqCount; x++)
-                        {
-                            PacketTransmissionRecord r = TransmissionRecords.Dequeue();
-                            r.Received = ((header.AckFlag >> x) & 1) == 1;
-                            TransmissionNotifications.Enqueue(r);
-                            Seq_LastNotified++;
-                            Seq_LastNotified = Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
-                            //sb.AppendLine($"Seq: {r.Seq} Seq_LastNotified: {Seq_LastNotified} Received: {r.Received}");
-
-                        }
-                    }
+                        sb.AppendLine($"Seq_LastNotified ({Seq_LastNotified}) falls inside ack flag ({header.AckFlag.Seq_Start}, {header.AckFlag.Seq_End})");
+                        header.AckFlag.DropUntilStartSeqEquals((byte)(Seq_LastNotified + 1));
+                        sb.AppendLine($"After dropping already notified sequences header.AckFlag is now: {header.AckFlag}");
+                        GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
+                    }                  
                 }
             }
             sb.AppendLine($"Seq_LastNotified - After: {Seq_LastNotified}");
@@ -314,17 +337,20 @@ public class PacketStreamSystem
 
                 // give packet to systems..
             }
-
-            DataReceivedEvents.Clear();
-            Debug.Log(sb.ToString());
         }
         catch (Exception e)
         {
             sb.AppendLine(e.Message);
-            Debug.Log(sb.ToString());
             throw e;
         }
+        finally
+        {
+            Debug.Log(sb.ToString());
+            DataReceivedEvents.Clear();
+        }
     }
+
+   
 
     private void UpdateOutgoing()
     {
@@ -333,29 +359,26 @@ public class PacketStreamSystem
         // flow control
         if (TransmissionRecords.Count >= 32)
         {
-            Debug.Log("ACK WINDOW LIMIT REACHED.. HALTING OUTGOING COMMS");
+            sb.Append("ACK WINDOW LIMIT REACHED.. HALTING OUTGOING COMMS");
+            Debug.Log(sb.ToString());
             return;
         }
 
         // fill in our reusable packet struct with the data for this sequence
         sendPacket.Header.Seq = Seq;
-        sendPacket.Header.AckFlag_StartSeq = RemoteSequencesAckedFlag_StartSeq;
-        sendPacket.Header.AckFlag_SeqCount = (ushort)RemoteSequenceAckedFlag_SeqCount;
-        sendPacket.Header.AckFlag = RemoteSequencesAckedFlag;
+        sendPacket.Header.AckFlag = RemoteSeqAckFlag;
 
         sb.AppendLine($"Generated Packet Seq: {sendPacket.Header.Seq}");
-        sb.AppendLine($"RemoteAckFlag: {RemoteSequencesAckedFlag}");
-        sb.AppendLine($"RemoteAckFlag_StartSeq: {RemoteSequencesAckedFlag_StartSeq}");
-        sb.AppendLine($"RemoteAckFlag_SeqCount: {RemoteSequenceAckedFlag_SeqCount}");
+        sb.AppendLine($"RemoteAckFlag: {RemoteSeqAckFlag}");
+        //sb.AppendLine($"RemoteAckFlag_StartSeq: {RemoteSequencesAckedFlag_StartSeq}");
+        //sb.AppendLine($"RemoteAckFlag_SeqCount: {RemoteSequenceAckedFlag_SeqCount}");
 
         // Create a transmission record for the packet
         PacketTransmissionRecord record = new PacketTransmissionRecord
         {
             Received = false,
             Seq = sendPacket.Header.Seq,
-            AckFlag = sendPacket.Header.AckFlag,
-            AckFlag_SeqCount = sendPacket.Header.AckFlag_SeqCount,
-            AckFlag_StartSeq = sendPacket.Header.AckFlag_StartSeq,
+            AckFlag = RemoteSeqAckFlag
         };
 
         // let each stream manager write until the packet is full
@@ -373,6 +396,40 @@ public class PacketStreamSystem
         Seq++;
 
         Debug.Log(sb.ToString());
+    }
+
+    /// <summary>
+    /// AckFlag must start at Seq_LastNotified + 1
+    /// All seqs in flag will be notified
+    /// </summary>
+    /// <param name="flag"></param>
+    /// <param name="seq_count"></param>
+    private void GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(SeqAckFlag flag)
+    {
+        // Notify based on the flag
+        for (int seqBitPos = 0; seqBitPos < flag.Seq_Count; seqBitPos++)
+        {
+            PacketTransmissionRecord r = TransmissionRecords.Dequeue();
+            r.Received = flag.IsAck(seqBitPos);
+            TransmissionNotifications.Enqueue(r);
+            Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
+        }
+    }
+
+    static bool SeqIsAheadButInsideWindow32(byte current, byte check)
+    {
+        // 223 is byte.MaxValue - 32
+        return ((check > current && (check - current <= 32)) ||
+                (check < current && (current > 223 && check < (byte)(32 - (byte.MaxValue - current)))));
+    }
+
+    // assumed that start and end are valid in terms of their distance from each other
+    // being at most 32 and start being < end in terms of a sequence timeline
+    static bool SeqIsInsideRange(byte start, byte end, byte check)
+    {
+        // if the end of the range is ahead of the check value, and the check value is ahead of the start of the range
+        // then the check value must be inside of the range
+        return SeqIsAheadButInsideWindow32(check, end) && SeqIsAheadButInsideWindow32(start, check);
     }
 
 }

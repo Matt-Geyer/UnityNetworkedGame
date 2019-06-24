@@ -323,7 +323,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8fee7bfa8ab30434893c89a1b7e5ace5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  R_GameServer: {fileID: 0}
+  R_GameServer: {fileID: 11400000, guid: 50df8fe1ffe3969468f27dac89a23904, type: 2}
   ShouldConnect: 0
   ConnectPort: 40069
   ConnectAddress: 127.0.0.1
