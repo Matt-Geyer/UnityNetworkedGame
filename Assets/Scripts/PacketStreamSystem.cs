@@ -103,7 +103,7 @@ public struct SeqAckFlag
     /// Seq must be within (seq_start, seq_end) or this will fuck up
     /// </summary>
     /// <param name="seq"></param>
-    public void DropUntilStartSeqEquals(byte seq)
+    public void DropStartSequenceUntilItEquals(byte seq)
     {
         while (Seq_Start != seq)
         {
@@ -291,7 +291,7 @@ public class PacketStreamSystem
                             TransmissionNotifications.Enqueue(record);
                             sb.AppendLine($"Seq {record.Seq} was dropped");
                         }
-                        
+                        // Notify based on sequences in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }
                     else if (SeqIsAheadButInsideWindow32((byte)Seq_LastNotified, header.AckFlag.Seq_Start))
@@ -305,14 +305,14 @@ public class PacketStreamSystem
                             Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
                             sb.AppendLine($"Sequence: {Seq_LastNotified} was dropped");
                         }
-
+                        // Notify based on sequences in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }                   
                     else if (SeqIsInsideRange(header.AckFlag.Seq_Start, header.AckFlag.Seq_End, (byte)Seq_LastNotified))
-                    {
-                        sb.AppendLine($"Seq_LastNotified ({Seq_LastNotified}) falls inside ack flag ({header.AckFlag.Seq_Start}, {header.AckFlag.Seq_End})");
-                        header.AckFlag.DropUntilStartSeqEquals((byte)(Seq_LastNotified + 1));
-                        sb.AppendLine($"After dropping already notified sequences header.AckFlag is now: {header.AckFlag}");
+                    {                      
+                        // Drop sequences we have already notified
+                        header.AckFlag.DropStartSequenceUntilItEquals((byte)(Seq_LastNotified + 1));
+                        // Notify based on sequences remaining in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }                  
                 }
@@ -339,7 +339,7 @@ public class PacketStreamSystem
                     }
                     else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_Start, record.AckFlag.Seq_End))
                     {
-                        RemoteSeqAckFlag.DropUntilStartSeqEquals((byte)(record.AckFlag.Seq_End + 1));
+                        RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte)(record.AckFlag.Seq_End + 1));
                     }
                 }
 
@@ -384,9 +384,7 @@ public class PacketStreamSystem
 
         sb.AppendLine($"Generated Packet Seq: {sendPacket.Header.Seq}");
         sb.AppendLine($"RemoteAckFlag: {RemoteSeqAckFlag}");
-        //sb.AppendLine($"RemoteAckFlag_StartSeq: {RemoteSequencesAckedFlag_StartSeq}");
-        //sb.AppendLine($"RemoteAckFlag_SeqCount: {RemoteSequenceAckedFlag_SeqCount}");
-
+       
         // Create a transmission record for the packet
         PacketTransmissionRecord record = new PacketTransmissionRecord
         {

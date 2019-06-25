@@ -203,7 +203,11 @@ public class UdpNetworkBehavior : MonoBehaviour
 
     // Start is called before the first frame update
     void Start()
-    {
+    {        
+
+        // ScriptableObjects being a pain for not much gain so just hardcode the reactor for now
+        R_GameServer = new TestPacketStreamReactor();
+
         // Game server reactor init
         R_GameServer.Initialize(Debug.unityLogger);
 
