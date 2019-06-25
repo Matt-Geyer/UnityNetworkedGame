@@ -171,10 +171,9 @@ public class PacketTransmissionRecord
     public SeqAckFlag AckFlag;
     public bool Received;
 
-
-
     // manager data
 }
+
 
 public class PacketStreamSystem
 {    
@@ -328,6 +327,26 @@ public class PacketStreamSystem
                 PacketTransmissionRecord record = TransmissionNotifications.Dequeue();
 
                 sb.AppendLine($"Sequence {record.Seq} Recv: {record.Received} ");
+
+                if (record.Received)
+                {
+                    sb.AppendLine($"Current RemoteSeqAckFlag: {RemoteSeqAckFlag}");
+                    sb.AppendLine($"TransmissionNotification AckFlag: {record.AckFlag}");
+
+                    // I think this covers all edge cases?
+                    if (RemoteSeqAckFlag.Seq_Start == record.AckFlag.Seq_End)
+                    {
+                        sb.AppendLine($"Current ACK starts where notification ack ended so we can drop the first seq of our current ack ");
+                        RemoteSeqAckFlag.DropStartSequence();
+                        sb.AppendLine($"RemoteSeqAckFlag after drop: {RemoteSeqAckFlag}");
+                    }
+                    else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_Start, record.AckFlag.Seq_End))
+                    {
+                        sb.AppendLine($"Current ACK contains several sequence acks that the remote stream no longer needs so delete up to: {(byte)(record.AckFlag.Seq_End + 1)} ");
+                        RemoteSeqAckFlag.DropUntilStartSeqEquals((byte)(record.AckFlag.Seq_End + 1));
+                        sb.AppendLine($"RemoteSeqAckFlag after drop: {RemoteSeqAckFlag}");
+                    }
+                }
 
                 // Each packet we send contains information regarding the last packet we have received from them as well as the payload
                 // If we know they received this packet then we can stop sending the reliable data from that packet
