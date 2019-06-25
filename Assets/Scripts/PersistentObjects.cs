@@ -1,31 +1,30 @@
 ﻿using LiteNetLib.Utils;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public abstract class PersistentObject
+public interface IPersistentObject
 {
-    public abstract void Serialize(NetDataWriter writer);
+    void Serialize(NetDataWriter writer);
 
-    public abstract void Deserialize(NetDataReader reader);
+    void Deserialize(NetDataReader reader);
 
-    public abstract void SetStaticRep(PersistentObjectRep rep);
+    void SetStaticObjectRep(PersistentObjectRep rep);
 }
 
 
 public class PersistentObjectRep
 {
-    private readonly Func<PersistentObject> ObjectFactory;
+    private readonly Func<IPersistentObject> ObjectFactory;
 
     public byte Id { get; set; }
 
-    public PersistentObjectRep(Func<PersistentObject> factory)
+    public PersistentObjectRep(Func<IPersistentObject> factory)
     {
         ObjectFactory = factory ?? throw new ArgumentNullException("factory");
     }
 
-    public PersistentObject CreateObject()
+    public IPersistentObject CreateNew()
     {
         return ObjectFactory();
     }
@@ -50,9 +49,9 @@ public class PersistentObjectManager
         ObjectReps[objectRep.Id] = objectRep;
     }
 
-    public PersistentObject CreateObject(byte id)
+    public IPersistentObject CreatePersistentObject(byte id)
     {
-        return ObjectReps[id].CreateObject();
+        return ObjectReps[id].CreateNew();
     }
 }
 
