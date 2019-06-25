@@ -329,22 +329,17 @@ public class PacketStreamSystem
                 sb.AppendLine($"Sequence {record.Seq} Recv: {record.Received} ");
 
                 if (record.Received)
-                {
-                    sb.AppendLine($"Current RemoteSeqAckFlag: {RemoteSeqAckFlag}");
-                    sb.AppendLine($"TransmissionNotification AckFlag: {record.AckFlag}");
-
+                {           
+                    // Drop the start of our current ack flage since we know that the remote stream
+                    // knows about the sequence that it represents
                     // I think this covers all edge cases?
                     if (RemoteSeqAckFlag.Seq_Start == record.AckFlag.Seq_End)
-                    {
-                        sb.AppendLine($"Current ACK starts where notification ack ended so we can drop the first seq of our current ack ");
+                    {                      
                         RemoteSeqAckFlag.DropStartSequence();
-                        sb.AppendLine($"RemoteSeqAckFlag after drop: {RemoteSeqAckFlag}");
                     }
                     else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_Start, record.AckFlag.Seq_End))
                     {
-                        sb.AppendLine($"Current ACK contains several sequence acks that the remote stream no longer needs so delete up to: {(byte)(record.AckFlag.Seq_End + 1)} ");
                         RemoteSeqAckFlag.DropUntilStartSeqEquals((byte)(record.AckFlag.Seq_End + 1));
-                        sb.AppendLine($"RemoteSeqAckFlag after drop: {RemoteSeqAckFlag}");
                     }
                 }
 
