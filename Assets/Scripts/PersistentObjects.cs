@@ -5,11 +5,12 @@ using UnityEngine;
 
 public interface IPersistentObject
 {
+    PersistentObjectRep ObjectRep { get; set; }
+
     void Serialize(NetDataWriter writer);
 
     void Deserialize(NetDataReader reader);
 
-    void SetStaticObjectRep(PersistentObjectRep rep);
 }
 
 
@@ -33,23 +34,18 @@ public class PersistentObjectRep
 
 public class PersistentObjectManager
 {
-    public Dictionary<byte, PersistentObjectRep> ObjectReps;
+    public static Dictionary<byte, PersistentObjectRep> ObjectReps = new Dictionary<byte, PersistentObjectRep>();
 
-    public byte NextId;
+    public static byte NextId;
 
-    public PersistentObjectManager()
-    {
-        ObjectReps = new Dictionary<byte, PersistentObjectRep>();
-    }
-
-    public void RegisterPersistentObject(PersistentObjectRep objectRep)
+    public static void RegisterPersistentObject(PersistentObjectRep objectRep)
     {
         objectRep.Id = NextId++;
         if (NextId == 255) throw new Exception("HOLY SHIT MAX PERSISTENT OBJECTS REACHED CHANGE ID TO A LARGER TYPE!");
         ObjectReps[objectRep.Id] = objectRep;
     }
 
-    public IPersistentObject CreatePersistentObject(byte id)
+    public static IPersistentObject CreatePersistentObject(byte id)
     {
         return ObjectReps[id].CreateNew();
     }

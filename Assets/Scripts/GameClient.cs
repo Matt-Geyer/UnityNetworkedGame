@@ -10,6 +10,9 @@ public class GameClient
 
     public readonly PacketStreamSystem PacketStream;
 
+    public readonly ReplicationSystem Replication;
+
+
     public ushort LastProcessedSequence;
 
     public int EntityId;
@@ -30,7 +33,8 @@ public class GameClient
     public GameClient(NetPeer peer)
     {
         Peer = peer ?? throw new ArgumentNullException("peer");
-        PacketStream = new PacketStreamSystem(Peer);
+        Replication = new ReplicationSystem();
+        PacketStream = new PacketStreamSystem(Peer, Replication);
     }
 }
 

@@ -20,7 +20,7 @@ using UnityEngine;
 public struct SeqAckFlag
 {
     public const int AckFlagSize = 32;
-    public const uint LastBitTrueMask = (uint)(1) << 31;
+    public const uint LastBitTrueMask = (uint)1 << 31;
     public uint Data;
     public byte Seq_Start;
     public byte Seq_Count;
@@ -172,6 +172,7 @@ public class PacketTransmissionRecord
     public bool Received;
 
     // manager data
+    public List<ReplicatedObjectTransmissionRecord> ReplicationTransmissions = new List<ReplicatedObjectTransmissionRecord>();
 }
 
 
@@ -198,7 +199,7 @@ public class PacketStreamSystem
     private readonly Queue<PacketTransmissionRecord> TransmissionRecords;
 
     // A PacketTransmissionRecord becomes a notification once we have determined if the packet it references was received or not
-    private readonly Queue<PacketTransmissionRecord> TransmissionNotifications;
+    private readonly List<PacketTransmissionRecord> TransmissionNotifications;
 
     // The NetPeer for the remote stream
     private readonly NetPeer Peer;
@@ -209,24 +210,21 @@ public class PacketStreamSystem
     // The packet we will constantly re-use to send data to the remote stream
     private NewPacket sendPacket;
 
-    public PacketStreamSystem(NetPeer _peer)
+    private readonly ReplicationSystem Replication;
+
+    public PacketStreamSystem(NetPeer _peer, ReplicationSystem replication)
     {
+        Peer = _peer ?? throw new ArgumentNullException("peer");
+        Replication = replication ?? throw new ArgumentNullException("replication");
         TransmissionRecords = new Queue<PacketTransmissionRecord>();
-        TransmissionNotifications = new Queue<PacketTransmissionRecord>();
+        TransmissionNotifications = new List<PacketTransmissionRecord>();
         DataReceivedEvents = new List<NetEvent>();
         NetWriter = new NetDataWriter(false, 1500);
-        Peer = _peer ?? throw new ArgumentNullException("peer");
         PacketBuffer = new NewPacket[100];
         RemoteSeqAckFlag = new SeqAckFlag();
     }
 
-    public void Update()
-    {        
-        UpdateIncoming();
-        UpdateOutgoing();
-    }
-
-    private void UpdateIncoming()
+    public void UpdateIncoming(bool host = false)
     {
         StringBuilder sb = new StringBuilder($"Update Incoming Frame: {Time.frameCount} Seq: {Seq}\n");
 
@@ -288,7 +286,7 @@ public class PacketStreamSystem
                             PacketTransmissionRecord record = TransmissionRecords.Dequeue();
                             Seq_LastNotified = record.Seq;
                             record.Received = false;
-                            TransmissionNotifications.Enqueue(record);
+                            TransmissionNotifications.Add(record);
                             sb.AppendLine($"Seq {record.Seq} was dropped");
                         }
                         // Notify based on sequences in flag
@@ -301,20 +299,32 @@ public class PacketStreamSystem
                         {
                             PacketTransmissionRecord r = TransmissionRecords.Dequeue();
                             r.Received = false;
-                            TransmissionNotifications.Enqueue(r);
+                            TransmissionNotifications.Add(r);
                             Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
                             sb.AppendLine($"Sequence: {Seq_LastNotified} was dropped");
                         }
                         // Notify based on sequences in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }                   
-                    else if (SeqIsInsideRange(header.AckFlag.Seq_Start, header.AckFlag.Seq_End, (byte)Seq_LastNotified))
-                    {                      
-                        // Drop sequences we have already notified
+                    else if (SeqIsInsideRangeInclusive(header.AckFlag.Seq_Start, header.AckFlag.Seq_End, (byte)Seq_LastNotified))
+                    {
+                        sb.AppendLine($"{Seq_LastNotified} is inside ack flag range");
+                        // Drop sequences we have already notified                                            
                         header.AckFlag.DropStartSequenceUntilItEquals((byte)(Seq_LastNotified + 1));
+
                         // Notify based on sequences remaining in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
-                    }                  
+                    }             
+                }
+
+                // Give stream to each system to process
+                if (host)
+                {
+
+                }
+                else
+                {
+                    Replication.ReadReplicationData(reader);
                 }
             }
             sb.AppendLine($"Seq_LastNotified - After: {Seq_LastNotified}");
@@ -322,10 +332,8 @@ public class PacketStreamSystem
             sb.AppendLine($"There are now { TransmissionRecords.Count} remaining transmission records in the queue");
 
             // Process notifications which should be in order
-            while (TransmissionNotifications.Count > 0)
+            foreach (PacketTransmissionRecord record in TransmissionNotifications)
             {
-                PacketTransmissionRecord record = TransmissionNotifications.Dequeue();
-
                 sb.AppendLine($"Sequence {record.Seq} Recv: {record.Received} ");
 
                 if (record.Received)
@@ -333,23 +341,23 @@ public class PacketStreamSystem
                     // Drop the start of our current ack flage since we know that the remote stream
                     // knows about the sequence that it represents
                     // I think this covers all edge cases?
-                    if (RemoteSeqAckFlag.Seq_Start == record.AckFlag.Seq_End)
-                    {                      
-                        RemoteSeqAckFlag.DropStartSequence();
-                    }
-                    else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_Start, record.AckFlag.Seq_End))
+                    if (record.AckFlag.Seq_Count > 0)
                     {
-                        RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte)(record.AckFlag.Seq_End + 1));
+                        if (RemoteSeqAckFlag.Seq_Start == record.AckFlag.Seq_End)
+                        {
+                            RemoteSeqAckFlag.DropStartSequence();
+                        }
+                        else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_Start, record.AckFlag.Seq_End))
+                        {
+                            RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte)(record.AckFlag.Seq_End + 1));
+                        }
                     }
                 }
+            }
 
-                // Each packet we send contains information regarding the last packet we have received from them as well as the payload
-                // If we know they received this packet then we can stop sending the reliable data from that packet
-
-                // Update the acks we are sending based on what we know the remote stream now knows
-
-
-                // give packet to systems..
+            if (host)
+            {
+                Replication.ProcessNotifications(TransmissionNotifications);
             }
         }
         catch (Exception e)
@@ -361,12 +369,11 @@ public class PacketStreamSystem
         {
             Debug.Log(sb.ToString());
             DataReceivedEvents.Clear();
+            TransmissionNotifications.Clear();
         }
     }
 
-   
-
-    private void UpdateOutgoing()
+    public void UpdateOutgoing(bool host = false)
     {
         StringBuilder sb = new StringBuilder($"UpdateOutgoing() - Frame: {Time.frameCount} Seq: {Seq}\n");
 
@@ -393,12 +400,18 @@ public class PacketStreamSystem
             AckFlag = RemoteSeqAckFlag
         };
 
-        // let each stream manager write until the packet is full
+        // Write the packet header to the stream
+        sendPacket.Serialize(NetWriter, true);
 
+        // let each stream manager write until the packet is full
+        if (host)
+        {
+            Replication.WriteReplicationData(NetWriter, record);
+        }
+        
         // create output events
         TransmissionRecords.Enqueue(record);
 
-        sendPacket.Serialize(NetWriter, true);
         Peer.Send(NetWriter.Data, 0, NetWriter.Length, DeliveryMethod.Unreliable);
         sb.AppendLine($"Sent Bytes: {NetWriter.Length}");
         NetWriter.Reset();
@@ -423,7 +436,7 @@ public class PacketStreamSystem
         {
             PacketTransmissionRecord r = TransmissionRecords.Dequeue();
             r.Received = flag.IsAck(seqBitPos);
-            TransmissionNotifications.Enqueue(r);
+            TransmissionNotifications.Add(r);
             Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
         }
     }
@@ -434,6 +447,20 @@ public class PacketStreamSystem
         return ((check > current && (check - current <= 32)) ||
                 (check < current && (current > 223 && check < (byte)(32 - (byte.MaxValue - current)))));
     }
+
+    static bool SeqIsEqualOrAheadButInsideWindow32(byte current, byte check)
+    {
+        // 223 is byte.MaxValue - 32
+        return (current == check ||
+               (check > current && (check - current <= 32)) ||
+               (check < current && (current > 223 && check < (byte)(32 - (byte.MaxValue - current)))));
+    }
+
+    static bool SeqIsInsideRangeInclusive(byte start, byte end, byte check)
+    {
+        return SeqIsEqualOrAheadButInsideWindow32(check, end) && SeqIsEqualOrAheadButInsideWindow32(start, check);
+    }
+
 
     // assumed that start and end are valid in terms of their distance from each other
     // being at most 32 and start being < end in terms of a sequence timeline

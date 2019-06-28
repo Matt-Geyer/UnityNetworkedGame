@@ -137,7 +137,7 @@ public class UdpNetworkBehavior : MonoBehaviour
     /// <summary>
     /// The game server reactor that will react to messages
     /// </summary>
-    public ScriptableNetEventReactor R_GameServer;
+    public ScriptableNetEventReactor R_GameReactor;
 
     /// <summary>
     /// Whether or not a connection should try to be established
@@ -194,7 +194,7 @@ public class UdpNetworkBehavior : MonoBehaviour
     private EventPoller<OutgoingUdpMessage> _OutgoingMessagePoller;
     private Thread _ProcessOutgoing;
     private CancellationTokenSource _CancellationSource;
-    private NetManager R_NetManager;
+    public NetManager R_NetManager;
     private RingBufferOutgoingUdpMessageSender _OutgoingUdpMessageSender;
     private NetManagerEvent[] _BatchedEvents;
     private readonly NetManagerEvent _CheckTimeoutEvent = new NetManagerEvent { EventId = NetManagerEvent.Event.CheckTimeouts };
@@ -203,14 +203,8 @@ public class UdpNetworkBehavior : MonoBehaviour
 
     // Start is called before the first frame update
     void Start()
-    {        
-
-        // ScriptableObjects being a pain for not much gain so just hardcode the reactor for now
-        R_GameServer = new TestPacketStreamReactor();
-
-        // Game server reactor init
-        R_GameServer.Initialize(Debug.unityLogger);
-
+    {     
+       
         // UDP Socket Listener/Sender initialization
         _Socket = new UdpSocket();
         _SocketListener = new AsyncUdpSocketListener(_Socket);
@@ -245,22 +239,19 @@ public class UdpNetworkBehavior : MonoBehaviour
         // Though I do like the idea of clearing up the locks and doing all the logic in the main thread esp since
         // the game server will need to routinely access connected client info
         R_NetManager = new NetManager(null, _OutgoingUdpMessageSender) { DisconnectTimeout = 600 };
-        R_GameServer.R_NetManager = R_NetManager;
+        R_GameReactor.R_NetManager = R_NetManager;
         _UpdateEvent = new GameEvent { EventId = GameEvent.Event.UPDATE };
         _TempEvent = new GameEvent(); // reusable event for the update loop
 
         //if (!ShouldBind)
         //{
         //    R_NetManager.SimulateLatency = true;
-        //    R_NetManager.SimulatePacketLoss = true;
+            R_NetManager.SimulatePacketLoss = true;
         //    R_NetManager.SimulationMaxLatency = 10;
         //    R_NetManager.SimulationMinLatency = 0;
         //}
 
-        R_NetManager.SimulateLatency = true;
-        R_NetManager.SimulatePacketLoss = true;
-        R_NetManager.SimulationMaxLatency = 10;
-        R_NetManager.SimulationMinLatency = 0;
+ 
 
 
         _CancellationSource = new CancellationTokenSource();
@@ -400,7 +391,7 @@ public class UdpNetworkBehavior : MonoBehaviour
             
             _TempEvent.NetEvent = R_NetManager.NetEventsQueue.Dequeue();
             //Debug.Log($"{Time.frameCount} - Evt: {_TempEvent.NetEvent.Type}");
-            R_GameServer.React(_TempEvent);
+            R_GameReactor.React(_TempEvent);
         }
 
         timeSinceLastUpdate += Time.deltaTime;
@@ -408,7 +399,7 @@ public class UdpNetworkBehavior : MonoBehaviour
         {
             timeSinceLastUpdate = 0;
             // TODO clean this up 
-            R_GameServer.React(_UpdateEvent);
+            R_GameReactor.React(_UpdateEvent);
         }
 
         //Debug.Log(R_NetManager.Statistics.ToString());

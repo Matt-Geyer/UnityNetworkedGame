@@ -14,7 +14,11 @@ public class GameClientReactor : ScriptableNetEventReactor
 
     public PlayerController PC;
 
+    public GameClient Client;
+
     public GameObject[] Entities = new GameObject[100];
+
+    public Dictionary<ushort, GameObject> R_GameObjects = new Dictionary<ushort, GameObject>();
 
     public int MyEntityId = 0;
 
@@ -45,133 +49,51 @@ public class GameClientReactor : ScriptableNetEventReactor
         switch (evt.EventId)
         {
             case GameEvent.Event.NETEVENT:
-                React(evt.NetEvent);
+                OnNetEvent(evt.NetEvent);
                 break;
             case GameEvent.Event.UPDATE:
-                Update();
+                OnUpdate();
                 break;
+        }
+    }   
+
+    private void OnUpdate()
+    {
+        if (CurrentState == State.PLAYING)
+        {
+            Client.PacketStream.UpdateIncoming();
+
+            // Update game
+            foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
+            {
+                if (!R_GameObjects.ContainsKey(r.Id))
+                {
+                    R_GameObjects[r.Id] = Instantiate(EntityPrefab);
+                }
+                ReplicatableGameObject rgo = r.Entity as ReplicatableGameObject;
+                R_GameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
+            }
+
+            Client.PacketStream.UpdateOutgoing();
         }
     }
 
-    private readonly GamePacket tempPacket = new GamePacket { 
-        Type = GamePacket.PacketType.CLIENTUPDATE,
-        Positions = new Vector3[200] };
-
-    private void Update()
-    {
-        if (CurrentState != State.PLAYING) { return; }
-
-        Debug.Log("Sampling Input..");
-
-        // sample input
-        var input = new UserInputSample { Seq = UserInputSeq++, Pressed = new ushort[2] };
-        UserInputUtils.Sample(input);
-        UserInputSamples.Add(input);
-
-        Debug.Log("Applying input");
-        // apply input
-        PC.ApplyInput(input);
-
-        tempPacket.Type = GamePacket.PacketType.CLIENTUPDATE;
-        tempPacket.UserInput = input;
-        NetDataWriter writer = new NetDataWriter(false, 1000);
-        tempPacket.Serialize(writer);
-
-        Debug.Log("About to send!");
-
-        // update server
-        //R_NetManager.ConnectedPeerList[0].Send(writer.Data, 0, writer.Length, DeliveryMethod.Unreliable);
-    }
-
-   
-
-    private void React(NetEvent evt)
+    private void OnNetEvent(NetEvent evt)
     {
         log.Log($"NetEvent: {evt.Type} ");
         switch (evt.Type)
         {
             case NetEvent.EType.Connect:
                 log.Log("I'm connected!");
-                CurrentState = State.READY;
+                CurrentState = State.PLAYING;
+                Client = new GameClient(evt.Peer);
                 break;
             case NetEvent.EType.Receive:
-                tempPacket.Deserialize(evt.DataReader);
-                React(tempPacket);
+                Client.PacketStream.DataReceivedEvents.Add(evt);
                 break;
         }
     }
 
-    private void React(GamePacket gameEvent)
-    {
-        switch (gameEvent.Type)
-        {
-            case GamePacket.PacketType.INIT:
-                if (CurrentState == State.READY)
-                {
-                    Debug.Log("CLIENT INIT");
-                    MyEntityId = gameEvent.EntityId;
-                    Entities[MyEntityId] = Instantiate(PlayerPrefab);
-                    PC = Entities[MyEntityId].GetComponent<PlayerController>();
-                    CurrentState = State.PLAYING;
-                }
-              
-       
-                break;
-            case GamePacket.PacketType.SERVERUPDATE:
-                OnGameUpdate(gameEvent);
-                break;
-
-        }
-    }
-
-    private void OnGameUpdate(GamePacket updatePacket)
-    {
-        Debug.Log($"Packet contains {updatePacket.PositionCount} entities!");
-
-        for (int i = 0; i < updatePacket.PositionCount; i++)
-        {
-            if (i == MyEntityId)
-            {
-                // server reconciliation 
-                if (Entities[i] == null)
-                {
-                    Debug.Log("INSTANTIATING MY ENTITY");
-                    Entities[i] = Instantiate(PlayerPrefab);
-                    PC = Entities[i].GetComponent<PlayerController>();
-                    CurrentState = State.PLAYING;
-                }
-                Debug.Log("UPDATING MY ENTITY");
-                Entities[i].transform.SetPositionAndRotation(updatePacket.Positions[i], Entities[i].transform.rotation);
-                int deleteCount = 0;
-                for (int j = 0; j < UserInputSamples.Count; i++)
-                {
-                    if (UserInputSamples[j].Seq <= updatePacket.LastClientSeq)
-                    {
-                        deleteCount++;
-                    }
-                    else
-                    {
-                        Debug.Log($"Applying sampled input {updatePacket.PositionCount}!");
-                        PC.ApplyInput(UserInputSamples[j]);
-                    }
-                }
-                if (deleteCount > 0)
-                {
-                    Debug.Log($"Deleting sampled inputs 0 - {deleteCount}!");
-                    UserInputSamples.RemoveRange(0, deleteCount);
-                }
-            }
-            else
-            {
-                if (Entities[i] == null)
-                {
-                    Entities[i] = Instantiate(EntityPrefab);
-                }
-
-                Entities[i].transform.SetPositionAndRotation(updatePacket.Positions[i], Entities[i].transform.rotation);
-            }
-        }
-    }
 
 
 }

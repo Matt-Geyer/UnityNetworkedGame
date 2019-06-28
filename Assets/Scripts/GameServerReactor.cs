@@ -17,8 +17,6 @@ public class TestPacketStreamReactor : ScriptableNetEventReactor
     {
         base.Initialize(logger);
 
-        
-
     }
 
     public override void React(GameEvent evt)
@@ -37,7 +35,8 @@ public class TestPacketStreamReactor : ScriptableNetEventReactor
     {
         foreach (GameClient gc in Clients.Values)
         {
-            gc.PacketStream.Update();
+            gc.PacketStream.UpdateIncoming();
+            gc.PacketStream.UpdateOutgoing();
         }
     }
 
@@ -103,16 +102,15 @@ public class GameServerReactor : ScriptableNetEventReactor
 
     public Dictionary<int, GameClient> Clients;
 
-    private ushort Seq = 0;
-
-    private ushort LastClientSeq = 0;
-
+    public ReplicatableGameObject[] R_Entities;
 
     public override void Initialize(ILogger logger)
     {
         base.Initialize(logger);
 
+
         Entities = new GameObject[100];
+        R_Entities = new ReplicatableGameObject[100];
 
         EntityIds = new Stack<int>();
 
@@ -121,19 +119,19 @@ public class GameServerReactor : ScriptableNetEventReactor
             EntityIds.Push(i);
         }
 
-
         Clients = new Dictionary<int, GameClient>();
 
         // add a couple -- this is not where this would normally be ofc
         for (int i = 0; i < 10; i++)
-            Entities[0] = Instantiate(EntityPrefab, new Vector3(0, i * 10, 0), new Quaternion());
-
+        {
+            Entities[i] = Instantiate(EntityPrefab, new Vector3(0, (i + 1) * 10, 0), new Quaternion());
+            R_Entities[i] = new ReplicatableGameObject();
+        }
+            
+        
         buffer = new byte[1024];
 
-        for (int i = 0; i < 1024; i++)
-        {
-            buffer[i] = (byte)i;
-        }
+
     }
 
     public override void React(GameEvent evt)
@@ -144,28 +142,36 @@ public class GameServerReactor : ScriptableNetEventReactor
         }
         else if (evt.EventId == GameEvent.Event.UPDATE)
         {
-            UpdateClients();
+            Clients_UpdateIncomingPacketStream();
+
+            // update game
+            for (int i = 0; i < 10; i++)
+            {
+                R_Entities[i].Position = Entities[i].transform.position;
+
+                // detect changes by comparing previous iterations values
+                R_Entities[i].UpdateStateMask();             
+            }
+
+            Clients_UpdateOutgoingPacketStream();
         }
     }
 
-    private readonly GamePacket packet = new GamePacket { Type = GamePacket.PacketType.SERVERUPDATE, Positions = new Vector3[100] };
-    private void UpdateClients()
+    private void Clients_UpdateIncomingPacketStream()
     {
-
-        packet.PositionCount = 0;
-        for (int i = 0; i < Entities.Length; i++)
+        foreach (NetPeer peer in R_NetManager.ConnectedPeerList)
         {
-            if (Entities[i] != null)
+            GameClient gc = Clients[peer.Id];
+
+            if (gc.CurrentState == GameClient.State.PLAYING)
             {
-                packet.Positions[packet.PositionCount] = Entities[i].transform.position;
-                packet.PositionCount++;
+                gc.PacketStream.UpdateIncoming(host: true);
             }
         }
+    }
 
-        Debug.Log($"Sending the position for {packet.PositionCount} entities");
-
-        packet.Seq = Seq++;
-
+    private void Clients_UpdateOutgoingPacketStream()
+    {
         foreach (NetPeer peer in R_NetManager.ConnectedPeerList)
         {
             GameClient gc = Clients[peer.Id];
@@ -176,14 +182,7 @@ public class GameServerReactor : ScriptableNetEventReactor
             }
             else if (gc.CurrentState == GameClient.State.PLAYING)
             {
-                packet.LastClientSeq = gc.LastProcessedSequence;
-
-                NetDataWriter writer = new NetDataWriter(false, 600);
-
-                packet.Serialize(writer);
-
-                peer.Send(writer.Data, 0, writer.Length, DeliveryMethod.Unreliable);
-
+                gc.PacketStream.UpdateOutgoing(host:true);
             }
         }
     }
@@ -196,7 +195,7 @@ public class GameServerReactor : ScriptableNetEventReactor
                 evt.ConnectionRequest.Accept(); // who needs security
                 break;
             case NetEvent.EType.Connect:
-                HandleNewConnectionWithEntities(evt);
+                HandleNewConnection(evt);
                 break;
             case NetEvent.EType.Receive:
                 HandleNetworkReceive(evt);
@@ -204,29 +203,11 @@ public class GameServerReactor : ScriptableNetEventReactor
         }
     }
 
-    private GamePacket t_packet = new GamePacket { Positions = new Vector3[200], UserInput = new UserInputSample { Pressed = new ushort[200] } };
-
-    private void HandleNetworkReceive(NetEvent gameEvent)
+    private void HandleNetworkReceive(NetEvent evt)
     {
-        t_packet.Deserialize(gameEvent.DataReader);
+        GameClient gc = Clients[evt.Peer.Id];
 
-        GameClient gc = Clients[gameEvent.Peer.Id];
-
-        switch (t_packet.Type)
-        {
-            case GamePacket.PacketType.CLIENTUPDATE:
-                gc.CurrentState = GameClient.State.PLAYING;
-                GameObject playerEntity = Entities[gc.EntityId];
-
-                PlayerController pc = playerEntity.GetComponent<PlayerController>();
-
-                if (t_packet.Seq > LastClientSeq)
-                {
-                    LastClientSeq = t_packet.Seq;
-                    pc.ApplyInput(t_packet.UserInput);
-                }
-                break;
-        }
+        gc.PacketStream.DataReceivedEvents.Add(evt);
     }
 
     private void SendInitToClient(GameClient client)
@@ -241,32 +222,26 @@ public class GameServerReactor : ScriptableNetEventReactor
 
     }
 
-    private void HandleNewConnectionWithEntities(NetEvent evt)
-    {
-
-        Debug.Log("Creating entity");
-
-        EntityManager em = World.Active.EntityManager;
-
-        Entity e = em.CreateEntity();
-
-       
-    }
-
     private void HandleNewConnection(NetEvent evt)
     {
         // Need an entity in the game world..
         int nextEntityId = EntityIds.Pop();
-        Entities[nextEntityId] = Instantiate(ClientPrefab);
+        //Entities[nextEntityId] = Instantiate(ClientPrefab);
         GameClient client = new GameClient(evt.Peer)
         {
-            CurrentState = GameClient.State.LOADING,
+            CurrentState = GameClient.State.PLAYING,
             EntityId = nextEntityId
         };
 
         Clients[client.Peer.Id] = client;
 
+        for (int i = 0; i < 10; i++)
+        {
+            client.Replication.StartReplicating(R_Entities[i]);
+        }
+
+
         // Send ... init packet?
-        SendInitToClient(client);
+        //SendInitToClient(client);
     }
 }
