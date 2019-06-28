@@ -233,6 +233,14 @@ public class GameServerReactor : ScriptableNetEventReactor
             EntityId = nextEntityId
         };
 
+        GameObject clientGameObj = Instantiate(ClientPrefab);
+
+        client.PlayerControlledObjectSys.Player = new PlayerControlledObject
+        {
+            Entity = clientGameObj,
+            PlayerController = clientGameObj.GetComponent<CharacterController>()
+        };
+        
         Clients[client.Peer.Id] = client;
 
         for (int i = 0; i < 10; i++)

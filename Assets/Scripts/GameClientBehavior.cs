@@ -8,13 +8,17 @@ public class GameClientBehavior : MonoBehaviour
     UdpNetworkBehavior Network;
 
     public GameObject EntityPrefab;
+    public GameObject PlayerPrefab;
 
     // Start is called before the first frame update
     void Start()
     {
-        GameClientReactor reactor = new GameClientReactor();
+        GameClientReactor reactor = new GameClientReactor
+        {
+            EntityPrefab = EntityPrefab,
+            PlayerPrefab = PlayerPrefab
+        };
         reactor.Initialize(Debug.unityLogger);
-        reactor.EntityPrefab = EntityPrefab;
         Network = GetComponent<UdpNetworkBehavior>();
         Network.R_GameReactor = reactor;
         Network.ShouldBind = false;

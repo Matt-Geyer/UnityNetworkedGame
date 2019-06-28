@@ -12,6 +12,7 @@ public class GameClient
 
     public readonly ReplicationSystem Replication;
 
+    public readonly PlayerControlledObjectSystem PlayerControlledObjectSys;
 
     public ushort LastProcessedSequence;
 
@@ -35,6 +36,7 @@ public class GameClient
         Peer = peer ?? throw new ArgumentNullException("peer");
         Replication = new ReplicationSystem();
         PacketStream = new PacketStreamSystem(Peer, Replication);
+        PlayerControlledObjectSys = new PlayerControlledObjectSystem();
     }
 }
 

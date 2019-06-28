@@ -2,7 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class UserInputUtils 
+public interface IUserInputUtils
+{
+    void Sample(UserInputSample sample);
+}
+
+
+public class UserInputUtils  : IUserInputUtils
 {
 
     public static readonly KeyCode[] CheckKeys =
@@ -18,14 +24,14 @@ public class UserInputUtils
         (ushort)KeyCode.A
     };
 
+    void IUserInputUtils.Sample(UserInputSample sample) 
+    {
+        Sample(sample);
+    }
+
     public static void Sample(UserInputSample sample)
     {
-
-        sample.DeltaTime = Time.deltaTime;
-
-        float horizontal = Input.GetAxis("Horizontal");
-
-        sample.MoveDirection.x = horizontal;
+        sample.MoveDirection.x = Input.GetAxis("Horizontal"); 
         sample.MoveDirection.z = Input.GetAxis("Vertical");
         sample.MoveDirection.y = 0;
 

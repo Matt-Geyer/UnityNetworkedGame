@@ -84,14 +84,26 @@ public class GameClientReactor : ScriptableNetEventReactor
         switch (evt.Type)
         {
             case NetEvent.EType.Connect:
-                log.Log("I'm connected!");
-                CurrentState = State.PLAYING;
-                Client = new GameClient(evt.Peer);
+                OnConnected(evt);
                 break;
             case NetEvent.EType.Receive:
                 Client.PacketStream.DataReceivedEvents.Add(evt);
                 break;
         }
+    }
+
+    private void OnConnected(NetEvent evt)
+    {
+        log.Log("I'm connected!");
+        CurrentState = State.PLAYING;
+        Client = new GameClient(evt.Peer);
+
+        GameObject playerGO = Instantiate(PlayerPrefab);
+
+        PlayerControlledObject pco = new PlayerControlledObject { Entity = playerGO, PlayerController = playerGO.GetComponent<CharacterController>() };
+
+        Client.PlayerControlledObjectSys.Player = pco;
+
     }
 
 

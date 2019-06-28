@@ -7,6 +7,7 @@ public class GameServerBehavior : MonoBehaviour
 {
 
     public GameObject ObjectPrefab;
+    public GameObject PlayerPrefab;
 
     UdpNetworkBehavior Network;
 
@@ -15,7 +16,8 @@ public class GameServerBehavior : MonoBehaviour
     {
         GameServerReactor reactor = new GameServerReactor
         {
-            EntityPrefab = ObjectPrefab
+            EntityPrefab = ObjectPrefab,
+            ClientPrefab = PlayerPrefab
         };
         reactor.Initialize(Debug.unityLogger);
         Network = GetComponent<UdpNetworkBehavior>();

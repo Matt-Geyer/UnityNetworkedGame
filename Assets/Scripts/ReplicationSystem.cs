@@ -248,7 +248,7 @@ public class ReplicationSystem
         }
     }
 
-    public void ReadReplicationData(NetDataReader stream)
+    public void ProcessReplicationData(NetDataReader stream)
     {
         StringBuilder sb = new StringBuilder();
         try

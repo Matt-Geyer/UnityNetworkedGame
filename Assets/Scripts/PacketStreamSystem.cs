@@ -324,7 +324,7 @@ public class PacketStreamSystem
                 }
                 else
                 {
-                    Replication.ReadReplicationData(reader);
+                    Replication.ProcessReplicationData(reader);
                 }
             }
             sb.AppendLine($"Seq_LastNotified - After: {Seq_LastNotified}");
