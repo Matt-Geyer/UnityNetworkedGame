@@ -75,6 +75,8 @@ public interface IPlayerControlledObjectSystem
     /// Sample move, add to buffer, apply
     /// </summary>
     void UpdateControlledObject();
+
+    PlayerControlledObject ControlledObject { get; set; }
         
 }
 
@@ -136,7 +138,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
     }
 
 
-    public PlayerControlledObject Player;
+    private PlayerControlledObject Player;
 
     private UserInputWindow PlayerInputWindow;
 
@@ -146,11 +148,14 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
 
     public ushort LastProcessedMoveSeq;
 
+    public PlayerControlledObject ControlledObject { get => Player; set => Player = value; }
+
     public PlayerControlledObjectSystem()
     {
-        PlayerInputWindow = new UserInputWindow();
-
-        PlayerInputWindow.Sampler = new UserInputUtils();
+        PlayerInputWindow = new UserInputWindow
+        {
+            Sampler = new UserInputUtils()
+        };
 
         PlayerInputWindow.Init(360);
 

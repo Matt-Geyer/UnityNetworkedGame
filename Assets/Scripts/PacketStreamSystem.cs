@@ -212,10 +212,13 @@ public class PacketStreamSystem
 
     private readonly ReplicationSystem Replication;
 
-    public PacketStreamSystem(NetPeer _peer, ReplicationSystem replication)
+    private readonly IPlayerControlledObjectSystem PCOSystem;
+
+    public PacketStreamSystem(NetPeer _peer, ReplicationSystem replication, IPlayerControlledObjectSystem playerControlledObjectSystem)
     {
         Peer = _peer ?? throw new ArgumentNullException("peer");
         Replication = replication ?? throw new ArgumentNullException("replication");
+        PCOSystem = playerControlledObjectSystem ?? throw new ArgumentNullException("playerControlledObjectSystem");
         TransmissionRecords = new Queue<PacketTransmissionRecord>();
         TransmissionNotifications = new List<PacketTransmissionRecord>();
         DataReceivedEvents = new List<NetEvent>();
@@ -318,12 +321,14 @@ public class PacketStreamSystem
                 }
 
                 // Give stream to each system to process
+                // todo this will be generalized to an ordered list of stream readers and writers
                 if (host)
                 {
-
+                    PCOSystem.ProcessClientToServerStream(reader);
                 }
                 else
                 {
+                    PCOSystem.ProcessServerToClientStream(reader);
                     Replication.ProcessReplicationData(reader);
                 }
             }
@@ -357,6 +362,7 @@ public class PacketStreamSystem
 
             if (host)
             {
+               
                 Replication.ProcessNotifications(TransmissionNotifications);
             }
         }
@@ -406,7 +412,12 @@ public class PacketStreamSystem
         // let each stream manager write until the packet is full
         if (host)
         {
+            PCOSystem.WriteServerToClientStream(NetWriter);
             Replication.WriteReplicationData(NetWriter, record);
+        }
+        else
+        {
+            PCOSystem.WriteClientToServerStream(NetWriter);
         }
         
         // create output events

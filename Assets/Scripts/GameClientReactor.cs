@@ -102,7 +102,7 @@ public class GameClientReactor : ScriptableNetEventReactor
 
         PlayerControlledObject pco = new PlayerControlledObject { Entity = playerGO, PlayerController = playerGO.GetComponent<CharacterController>() };
 
-        Client.PlayerControlledObjectSys.Player = pco;
+        Client.PlayerControlledObjectSys.ControlledObject = pco;
 
     }
 

@@ -235,7 +235,7 @@ public class GameServerReactor : ScriptableNetEventReactor
 
         GameObject clientGameObj = Instantiate(ClientPrefab);
 
-        client.PlayerControlledObjectSys.Player = new PlayerControlledObject
+        client.PlayerControlledObjectSys.ControlledObject = new PlayerControlledObject
         {
             Entity = clientGameObj,
             PlayerController = clientGameObj.GetComponent<CharacterController>()
