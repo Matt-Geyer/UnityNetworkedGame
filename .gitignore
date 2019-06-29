@@ -5,6 +5,9 @@
 [Bb]uilds/
 Assets/AssetStoreTools*
 
+# App store purchases
+Assets/AiUnity
+
 # Visual Studio cache directory
 .vs/
 

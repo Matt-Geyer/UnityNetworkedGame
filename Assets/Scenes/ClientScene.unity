@@ -395,6 +395,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   EntityPrefab: {fileID: 5541842073335477417, guid: f069de58fb76efa41a7ac48bba7a9f4e,
     type: 3}
+  PlayerPrefab: {fileID: 7901711079488773690, guid: 843202f9665229c4c8d35b4273d5c8ad,
+    type: 3}
 --- !u!4 &1856296096
 Transform:
   m_ObjectHideFlags: 0

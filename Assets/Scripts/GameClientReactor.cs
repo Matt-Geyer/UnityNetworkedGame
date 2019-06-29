@@ -63,6 +63,8 @@ public class GameClientReactor : ScriptableNetEventReactor
         {
             Client.PacketStream.UpdateIncoming();
 
+            Client.PlayerControlledObjectSys.UpdateControlledObject();
+
             // Update game
             foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
             {

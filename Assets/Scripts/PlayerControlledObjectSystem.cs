@@ -110,7 +110,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
             int sampleIndex = Last;
             Sampler.Sample(Input[sampleIndex]);
             Input[sampleIndex].Seq = Seq;
-            Last++;
+            Last = ++Last < Max ? Last : 0;
             Count++;
             Seq++;
             return sampleIndex;
@@ -130,15 +130,12 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
                 int targetSeq = Seq + 1;
                 while (Count > 0 && Input[First].Seq != targetSeq)
                 {
-                    First++;
+                    First = ++First < Max ? First : 0;
                     Count--;
                 }
             }
         }
     }
-
-
-    private PlayerControlledObject Player;
 
     private UserInputWindow PlayerInputWindow;
 
@@ -148,7 +145,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
 
     public ushort LastProcessedMoveSeq;
 
-    public PlayerControlledObject ControlledObject { get => Player; set => Player = value; }
+    public PlayerControlledObject ControlledObject { get; set; }
 
     public PlayerControlledObjectSystem()
     {
@@ -197,7 +194,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         stream.Put(LastProcessedMoveSeq);
 
         // Send new pco state
-        Player.Serialize(stream);
+        ControlledObject.Serialize(stream);
 
         // Send state of all pco that are being replicated by this system
     }
@@ -221,7 +218,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         // This should always have at least one new move but up to 3
         for (int j = i; j <= 2; j++)
         {
-            Player.ApplyInput(PlayerInputWindow.Input[i]);
+            ControlledObject.ApplyInput(PlayerInputWindow.Input[i]);
             LastProcessedMoveSeq = PlayerInputWindow.Input[i].Seq;
         }
     }
@@ -234,12 +231,12 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         PlayerInputWindow.AckSeq(LastProcessedMoveSeq);
 
         // read state of player obj and set it using remainder of moves in buffer to predict again
-        Player.Deserialize(stream);
+        ControlledObject.Deserialize(stream);
 
         // read state of all replicated pco and predict
         for (int i = 0; i < PlayerInputWindow.Count; i++)
         {
-            Player.ApplyInput(PlayerInputWindow.Input[PlayerInputWindow.First + i]);
+            ControlledObject.ApplyInput(PlayerInputWindow.Input[PlayerInputWindow.First + i]);
         }
     }
 
@@ -251,7 +248,7 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         if (nextSampleIndex > 0)
         {
             // apply move 
-            Player.ApplyInput(PlayerInputWindow.Input[nextSampleIndex]);
+            ControlledObject.ApplyInput(PlayerInputWindow.Input[nextSampleIndex]);
 
             // Update packets to transmit 
             PlayerInputsToTransmit.RemoveAt(0);
