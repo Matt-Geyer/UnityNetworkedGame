@@ -1,4 +1,5 @@
-﻿using LiteNetLib;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib;
 using LiteNetLib.Utils;
 using System;
 using System.Collections;
@@ -214,11 +215,14 @@ public class PacketStreamSystem
 
     private readonly IPlayerControlledObjectSystem PCOSystem;
 
+    private readonly NLogger Log;
+
     public PacketStreamSystem(NetPeer _peer, ReplicationSystem replication, IPlayerControlledObjectSystem playerControlledObjectSystem)
     {
         Peer = _peer ?? throw new ArgumentNullException("peer");
         Replication = replication ?? throw new ArgumentNullException("replication");
         PCOSystem = playerControlledObjectSystem ?? throw new ArgumentNullException("playerControlledObjectSystem");
+        Log = NLogManager.Instance.GetLogger(this);
         TransmissionRecords = new Queue<PacketTransmissionRecord>();
         TransmissionNotifications = new List<PacketTransmissionRecord>();
         DataReceivedEvents = new List<NetEvent>();
@@ -229,12 +233,14 @@ public class PacketStreamSystem
 
     public void UpdateIncoming(bool host = false)
     {
-        StringBuilder sb = new StringBuilder($"Update Incoming Frame: {Time.frameCount} Seq: {Seq}\n");
+        if (DataReceivedEvents.Count == 0) return;
+
+        Log.Debug($"UPDATE INCOMING - Frame: {Time.frameCount} Seq: {Seq}\n");
 
         try
         {
             // Process data received events
-            sb.AppendLine($"Received {DataReceivedEvents.Count} packets");
+            Log.Debug($"Received {DataReceivedEvents.Count} packets");
             for (int i = 0; i < DataReceivedEvents.Count; i++)
             {
                 // Get data reader from evt which contains the binary data for the packet
@@ -243,9 +249,9 @@ public class PacketStreamSystem
                 PacketBuffer[i].Deserialize(reader, true);
                                 
                 var header = PacketBuffer[i].Header;
-                sb.AppendLine($"Received Packet Sequence: {header.Seq}");               
-                sb.AppendLine($"Packet AckFlag: {header.AckFlag}");               
-                sb.AppendLine($"Local AckedFlag- before: {RemoteSeqAckFlag}");
+                Log.Debug($"Received Packet Sequence: {header.Seq}");               
+                Log.Debug($"Packet AckFlag: {header.AckFlag}");               
+                Log.Debug($"Local AckedFlag- before: {RemoteSeqAckFlag}");
      
                 if (RemoteSeqAckFlag.Seq_Count == 0)
                 {
@@ -254,7 +260,7 @@ public class PacketStreamSystem
                 }               
                 else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.Seq_End, header.Seq)) 
                 {
-                    sb.AppendLine($"Received sequence {header.Seq} is ahead of the last sequence in our ack flag: {RemoteSeqAckFlag.Seq_End}");
+                    Log.Debug($"Received sequence {header.Seq} is ahead of the last sequence in our ack flag: {RemoteSeqAckFlag.Seq_End}");
 
                     // The seq is ahead of the range of our flag (ie a new seq) but we want to NACK any that 
                     // sequences that are in between the last sequence we acked, and this sequence we are now receiving
@@ -262,7 +268,7 @@ public class PacketStreamSystem
                     while (RemoteSeqAckFlag.Seq_End != (byte)(header.Seq - 1))
                     {
                         RemoteSeqAckFlag.NackNextSequence();
-                        sb.AppendLine($"NACKed sequence {RemoteSeqAckFlag.Seq_End}");
+                        Log.Debug($"NACKed sequence {RemoteSeqAckFlag.Seq_End}");
                     }
 
                     // Ack this sequence in our flag
@@ -272,7 +278,7 @@ public class PacketStreamSystem
                 {
                     // This packet was delivered out of order
                     // or is outside the expected window so don't process it further
-                    sb.AppendLine($"{header.Seq} - SKIPPED UNEXPECTED");
+                    Log.Debug($"{header.Seq} - SKIPPED UNEXPECTED");
                     continue;
                 }
 
@@ -281,7 +287,7 @@ public class PacketStreamSystem
                 {
                     if (Seq_LastNotified == -1)
                     {
-                        sb.AppendLine("Initializing Seq_LastNotified");
+                        Log.Debug("Initializing Seq_LastNotified");
                         // This is the start of us notifying packets.. if any packets were sent but aren't
                         // included in this ack flag then they must have been dropped
                         while (TransmissionRecords.Peek().Seq != header.AckFlag.Seq_Start)
@@ -290,7 +296,7 @@ public class PacketStreamSystem
                             Seq_LastNotified = record.Seq;
                             record.Received = false;
                             TransmissionNotifications.Add(record);
-                            sb.AppendLine($"Seq {record.Seq} was dropped");
+                            Log.Debug($"Seq {record.Seq} was dropped");
                         }
                         // Notify based on sequences in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
@@ -304,14 +310,14 @@ public class PacketStreamSystem
                             r.Received = false;
                             TransmissionNotifications.Add(r);
                             Seq_LastNotified = ++Seq_LastNotified <= byte.MaxValue ? Seq_LastNotified : 0;
-                            sb.AppendLine($"Sequence: {Seq_LastNotified} was dropped");
+                            Log.Debug($"Sequence: {Seq_LastNotified} was dropped");
                         }
                         // Notify based on sequences in flag
                         GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(header.AckFlag);
                     }                   
                     else if (SeqIsInsideRangeInclusive(header.AckFlag.Seq_Start, header.AckFlag.Seq_End, (byte)Seq_LastNotified))
                     {
-                        sb.AppendLine($"{Seq_LastNotified} is inside ack flag range");
+                        Log.Debug($"{Seq_LastNotified} is inside ack flag range");
                         // Drop sequences we have already notified                                            
                         header.AckFlag.DropStartSequenceUntilItEquals((byte)(Seq_LastNotified + 1));
 
@@ -320,26 +326,31 @@ public class PacketStreamSystem
                     }             
                 }
 
+                Log.Debug("Finished generating notifications");
+
                 // Give stream to each system to process
                 // todo this will be generalized to an ordered list of stream readers and writers
                 if (host)
                 {
+                    Log.Debug("Giving stream to PCOSystem");
                     PCOSystem.ProcessClientToServerStream(reader);
                 }
                 else
                 {
+                    Log.Debug("Giving stream to PCOSystem");
                     PCOSystem.ProcessServerToClientStream(reader);
+                    Log.Debug("Giving stream to ReplicationSystem");
                     Replication.ProcessReplicationData(reader);
                 }
             }
-            sb.AppendLine($"Seq_LastNotified - After: {Seq_LastNotified}");
-            sb.AppendLine($"Generated {TransmissionNotifications.Count} transmission notifications");
-            sb.AppendLine($"There are now { TransmissionRecords.Count} remaining transmission records in the queue");
+            Log.Debug($"Seq_LastNotified - After: {Seq_LastNotified}");
+            Log.Debug($"Generated {TransmissionNotifications.Count} transmission notifications");
+            Log.Debug($"There are now { TransmissionRecords.Count} remaining transmission records in the queue");
 
             // Process notifications which should be in order
             foreach (PacketTransmissionRecord record in TransmissionNotifications)
             {
-                sb.AppendLine($"Sequence {record.Seq} Recv: {record.Received} ");
+                Log.Debug($"Sequence {record.Seq} Recv: {record.Received} ");
 
                 if (record.Received)
                 {           
@@ -368,12 +379,11 @@ public class PacketStreamSystem
         }
         catch (Exception e)
         {
-            sb.AppendLine(e.Message);
+            Log.Debug(e.Message);
             throw e;
         }
         finally
         {
-            Debug.Log(sb.ToString());
             DataReceivedEvents.Clear();
             TransmissionNotifications.Clear();
         }
@@ -381,13 +391,12 @@ public class PacketStreamSystem
 
     public void UpdateOutgoing(bool host = false)
     {
-        StringBuilder sb = new StringBuilder($"UpdateOutgoing() - Frame: {Time.frameCount} Seq: {Seq}\n");
+        Log.Debug($"UpdateOutgoing() - Frame: {Time.frameCount} Seq: {Seq}\n");
 
         // flow control
         if (TransmissionRecords.Count >= 32)
         {
-            sb.Append("ACK WINDOW LIMIT REACHED.. HALTING OUTGOING COMMS");
-            Debug.Log(sb.ToString());
+            Log.Debug("ACK WINDOW LIMIT REACHED.. HALTING OUTGOING COMMS");
             return;
         }
 
@@ -395,8 +404,8 @@ public class PacketStreamSystem
         sendPacket.Header.Seq = Seq;
         sendPacket.Header.AckFlag = RemoteSeqAckFlag;
 
-        sb.AppendLine($"Generated Packet Seq: {sendPacket.Header.Seq}");
-        sb.AppendLine($"RemoteAckFlag: {RemoteSeqAckFlag}");
+        Log.Debug($"Generated Packet Seq: {sendPacket.Header.Seq}");
+        Log.Debug($"RemoteAckFlag: {RemoteSeqAckFlag}");
        
         // Create a transmission record for the packet
         PacketTransmissionRecord record = new PacketTransmissionRecord
@@ -424,14 +433,12 @@ public class PacketStreamSystem
         TransmissionRecords.Enqueue(record);
 
         Peer.Send(NetWriter.Data, 0, NetWriter.Length, DeliveryMethod.Unreliable);
-        sb.AppendLine($"Sent Bytes: {NetWriter.Length}");
+        Log.Debug($"Sent Bytes: {NetWriter.Length}");
         NetWriter.Reset();
 
         // Only increment our seq on successful send
         // IE if waiting for acks then seq doesn't increase
         Seq++;
-
-        Debug.Log(sb.ToString());
     }
 
     /// <summary>

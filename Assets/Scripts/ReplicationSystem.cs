@@ -1,4 +1,5 @@
-﻿using LiteNetLib.Utils;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib.Utils;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -92,10 +93,6 @@ public class ReplicatableGameObject : ReplicatableObject
                 Debug.Log($"{Time.frameCount} : Position changed!");            
                 ChangedStates |= StateFlag.Position;
             }
-            else
-            {
-                Debug.Log("Position stayed the same!");
-            }
         }
 
         LastFrame.CopyStateFrom(this);
@@ -187,10 +184,11 @@ public class ReplicationSystem
     public int Id;
     public ushort NextId = 1;
     public readonly Dictionary<ushort, ReplicationRecord> ReplicatedObjects = new Dictionary<ushort, ReplicationRecord>();
+    public NLogger Log;
 
     public ReplicationSystem()
     {
-
+        Log = NLogManager.Instance.GetLogger(this);
     }
 
     public void StartReplicating(ReplicatableObject obj)
@@ -250,21 +248,20 @@ public class ReplicationSystem
 
     public void ProcessReplicationData(NetDataReader stream)
     {
-        StringBuilder sb = new StringBuilder();
         try
         {
             ushort repObjId = stream.GetUShort();
             while (repObjId != 0)
             {
-                sb.AppendLine($"Reading ghost with id: {repObjId}");
+                Log.Debug($"Reading ghost with id: {repObjId}");
                 // first read if there is a status change
                 if (stream.GetByte() == 1)
                 {
-                    sb.Append($"status changed: ");
+         
                     // read the status change
                     if (stream.GetByte() == 1)
                     {
-                        sb.AppendLine("ADDED");
+                        Log.Debug("status changed: ADDED");
                         // added so read the persistent obj id 
                         byte objRepId = stream.GetByte();
 
@@ -282,7 +279,7 @@ public class ReplicationSystem
                     }
                     else
                     {
-                        sb.AppendLine("REMOVED");
+                        Log.Debug("status changed: REMOVED");
                         // remove the record but also need to destroy game object or queue it to be destroyed..
                         if (ReplicatedObjects.TryGetValue(repObjId, out ReplicationRecord record))
                         {
@@ -293,7 +290,7 @@ public class ReplicationSystem
                 }
                 else
                 {
-                    sb.AppendLine("State update");
+                    Log.Debug("State update");
                     // no status change just new state information  so unpack into existing replicated obj
                     ReplicatedObjects[repObjId].Entity.Deserialize(stream);
                 }
@@ -302,18 +299,13 @@ public class ReplicationSystem
         }
         catch (Exception e)
         {
-            sb.AppendLine(e.Message);
+            Log.Debug(e.Message);
             throw e;
-        }
-        finally
-        {
-            Debug.Log(sb.ToString());
-        }        
+        }     
     }
 
     public void WriteReplicationData(NetDataWriter stream, PacketTransmissionRecord packetTransmissionRecord)
     {
-        StringBuilder sb = new StringBuilder();
 
         try
         {
@@ -325,39 +317,40 @@ public class ReplicationSystem
             // the actual buffer size 
             foreach (ReplicationRecord r in ReplicatedObjects.Values)
             {
-                sb.AppendLine($"Writing ghost: {r.Id}");
+                if (r.StateMask == 0 && r.Status == ReplicationRecord.ReplicationSystemStatus.None) continue;
+
+                Log.Debug($"Writing ghost: {r.Id}");
                 // Write the Id of the object that is referenced by the remote ReplicationSystem
                 stream.Put(r.Id);
                 // Write the state of the replicated object (need bitpacker so that this takes at most 2 bits)
                 if (r.Status == ReplicationRecord.ReplicationSystemStatus.None)
                 {
-                    sb.AppendLine("No status change");
+                    Log.Debug("No status change");
                     stream.Put((byte)0);
                 }
                 else
                 {
                     stream.Put((byte)1);
-                    sb.Append("Status changed: ");
                     if (r.Status == ReplicationRecord.ReplicationSystemStatus.Added)
                     {
                        
                         stream.Put((byte)1);
                         // Write persistent object id for obj
                         stream.Put(r.Entity.ObjectRep.Id);
-                        sb.AppendLine($"added. Writing object rep id: {r.Entity.ObjectRep.Id}");
+                        Log.Debug($"Status: ADDED. Writing object rep id: {r.Entity.ObjectRep.Id}");
                     }
                     else
                     {
-                        sb.AppendLine("removed");
+                        Log.Debug("Status: REMOVED");
                         // removed
                         stream.Put((byte)0);
                     }
                 }
 
-                sb.AppendLine($"Serializing object into stream. Bytes before: {stream.Length}");
+                Log.Debug($"Serializing object into stream. Bytes before: {stream.Length}");
                 // Write the object into the stream using the state mask for this rep system
                 r.Entity.Serialize(stream, r.StateMask);
-                sb.AppendLine($"After serializing size: {stream.Length}");
+                Log.Debug($"After serializing size: {stream.Length}");
 
 
                 // Write state and status to transmission record
@@ -388,12 +381,8 @@ public class ReplicationSystem
         }
         catch (Exception e)
         {
-            sb.AppendLine(e.Message);
+            Log.Debug(e.Message);
             throw e;
-        }
-        finally
-        {
-            Debug.Log(sb.ToString());
-        }        
+        }       
     }
 }

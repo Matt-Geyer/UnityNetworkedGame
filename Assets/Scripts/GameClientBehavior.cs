@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using AiUnity.NLog.Core;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -18,7 +19,6 @@ public class GameClientBehavior : MonoBehaviour
             EntityPrefab = EntityPrefab,
             PlayerPrefab = PlayerPrefab
         };
-        reactor.Initialize(Debug.unityLogger);
         Network = GetComponent<UdpNetworkBehavior>();
         Network.R_GameReactor = reactor;
         Network.ShouldBind = false;

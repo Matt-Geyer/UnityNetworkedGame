@@ -35,13 +35,13 @@ public class UserInputUtils  : IUserInputUtils
         sample.MoveDirection.z = Input.GetAxis("Vertical");
         sample.MoveDirection.y = 0;
 
-        int len = CheckKeys.Length;
-        for (int i = 0; i < len; i++)
-        {
-            if (Input.GetKey(CheckKeys[i]))
-            {
-                sample.Pressed[sample.PressedCount++] = CheckKeysUshort[i];
-            }
-        }
+        //int len = CheckKeys.Length;
+        //for (int i = 0; i < len; i++)
+        //{
+        //    if (Input.GetKey(CheckKeys[i]))
+        //    {
+        //        sample.Pressed[sample.PressedCount++] = CheckKeysUshort[i];
+        //    }
+        //}
     }   
 }

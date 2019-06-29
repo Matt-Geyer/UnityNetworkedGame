@@ -1,4 +1,5 @@
-﻿using Disruptor;
+﻿using AiUnity.NLog.Core;
+using Disruptor;
 using Disruptor.Dsl;
 using GameUDPLibrary;
 using LiteNetLib;
@@ -110,17 +111,16 @@ public class GameEvent
 
 }
 
-public abstract class ScriptableNetEventReactor : ScriptableObject, IGameEventReactor
+public abstract class NetEventReactor : IGameEventReactor
 {
-    public ILogger log;
-
+ 
     public IAsyncUdpMessageSender UdpMessageSender;
 
     public NetManager R_NetManager;
 
-    public virtual void Initialize(ILogger logger)
+    public virtual void Initialize()
     {
-        log = logger;
+ 
     }
 
     public abstract void React(GameEvent evt);
@@ -137,7 +137,7 @@ public class UdpNetworkBehavior : MonoBehaviour
     /// <summary>
     /// The game server reactor that will react to messages
     /// </summary>
-    public ScriptableNetEventReactor R_GameReactor;
+    public NetEventReactor R_GameReactor;
 
     /// <summary>
     /// Whether or not a connection should try to be established

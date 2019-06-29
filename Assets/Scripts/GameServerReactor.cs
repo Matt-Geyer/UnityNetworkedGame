@@ -1,4 +1,5 @@
-﻿using LiteNetLib;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib;
 using LiteNetLib.Utils;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,18 +7,12 @@ using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "TestPacketStreamReactor", menuName = "TestPacketStreamReactor")]
-public class TestPacketStreamReactor : ScriptableNetEventReactor
+public class TestPacketStreamReactor : NetEventReactor
 {
     public Dictionary<int, GameClient> Clients = new Dictionary<int, GameClient>();
 
     private GameClient Client;
-
-    public override void Initialize(ILogger logger)
-    {
-        base.Initialize(logger);
-
-    }
+    
 
     public override void React(GameEvent evt)
     {
@@ -86,8 +81,7 @@ public class TestPacketStreamReactor : ScriptableNetEventReactor
 
 
 
-[CreateAssetMenu(fileName = "GameServerReactor", menuName = "GameServerReactor")]
-public class GameServerReactor : ScriptableNetEventReactor
+public class GameServerReactor : NetEventReactor
 {
 
     private byte[] buffer;
@@ -104,10 +98,13 @@ public class GameServerReactor : ScriptableNetEventReactor
 
     public ReplicatableGameObject[] R_Entities;
 
-    public override void Initialize(ILogger logger)
-    {
-        base.Initialize(logger);
+    private readonly NLogger Log;
 
+    public GameServerReactor()
+    {
+    
+
+        Log = NLogManager.Instance.GetLogger(this);
 
         Entities = new GameObject[100];
         R_Entities = new ReplicatableGameObject[100];
@@ -121,12 +118,7 @@ public class GameServerReactor : ScriptableNetEventReactor
 
         Clients = new Dictionary<int, GameClient>();
 
-        // add a couple -- this is not where this would normally be ofc
-        for (int i = 0; i < 10; i++)
-        {
-            Entities[i] = Instantiate(EntityPrefab, new Vector3(0, (i + 1) * 10, 0), new Quaternion());
-            R_Entities[i] = new ReplicatableGameObject();
-        }
+       
             
         
         buffer = new byte[1024];
@@ -134,14 +126,29 @@ public class GameServerReactor : ScriptableNetEventReactor
 
     }
 
+    public override void Initialize()
+    {
+        base.Initialize();
+
+        // add a couple -- this is not where this would normally be ofc
+        for (int i = 0; i < 10; i++)
+        {
+            Entities[i] = GameObject.Instantiate(EntityPrefab, new Vector3(0, (i + 1) * 10, 0), new Quaternion());
+            R_Entities[i] = new ReplicatableGameObject();
+        }
+    }
+
     public override void React(GameEvent evt)
     {
+
         if (evt.EventId == GameEvent.Event.NETEVENT)
         {
             React(evt.NetEvent);
         }
         else if (evt.EventId == GameEvent.Event.UPDATE)
         {
+            Log.Debug($"{Time.frameCount}: STARTED UPDATE");
+
             Clients_UpdateIncomingPacketStream();
 
             // update game
@@ -154,6 +161,8 @@ public class GameServerReactor : ScriptableNetEventReactor
             }
 
             Clients_UpdateOutgoingPacketStream();
+
+            Log.Debug($"{Time.frameCount}: FINISHED UPDATE");
         }
     }
 
@@ -233,7 +242,7 @@ public class GameServerReactor : ScriptableNetEventReactor
             EntityId = nextEntityId
         };
 
-        GameObject clientGameObj = Instantiate(ClientPrefab);
+        GameObject clientGameObj = GameObject.Instantiate(ClientPrefab);
 
         client.PlayerControlledObjectSys.ControlledObject = new PlayerControlledObject
         {
@@ -247,6 +256,8 @@ public class GameServerReactor : ScriptableNetEventReactor
         {
             client.Replication.StartReplicating(R_Entities[i]);
         }
+
+        Log.Debug("Got new connection!");
 
 
         // Send ... init packet?

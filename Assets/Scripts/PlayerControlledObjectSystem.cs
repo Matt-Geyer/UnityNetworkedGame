@@ -1,4 +1,5 @@
-﻿using LiteNetLib.Utils;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib.Utils;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -95,9 +96,15 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         public ushort UpperSeqWindow;
         public IUserInputUtils Sampler;       
 
+    
+
         public void Init(int max)
         {
             Input = new UserInputSample[max];
+            for (int i = 0; i < max; i++)
+            {
+                Input[i] = new UserInputSample();
+            }
             First = Last = 0;
             Count = 0;
             Max = max;
@@ -141,14 +148,18 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
 
     private List<UserInputSample> PlayerInputsToTransmit;
 
-    public ushort MoveSeq;
+    public ushort Seq;
 
-    public ushort LastProcessedMoveSeq;
+    public int Seq_LastProcessed = -1;
 
     public PlayerControlledObject ControlledObject { get; set; }
 
+    private readonly NLogger Log;
+
     public PlayerControlledObjectSystem()
     {
+        Log = NLogManager.Instance.GetLogger(this);
+
         PlayerInputWindow = new UserInputWindow
         {
             Sampler = new UserInputUtils()
@@ -186,12 +197,17 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         PlayerInputsToTransmit[0].Serialize(stream);
         PlayerInputsToTransmit[1].Serialize(stream);
         PlayerInputsToTransmit[2].Serialize(stream);
+
+        Log.Debug($"PlayerInputsToTransmit[0].Seq:{ PlayerInputsToTransmit[0].Seq}");
+        Log.Debug($"PlayerInputsToTransmit[1].Seq:{ PlayerInputsToTransmit[1].Seq}");
+        Log.Debug($"PlayerInputsToTransmit[2].Seq:{ PlayerInputsToTransmit[2].Seq}");
+
     }
 
     public void WriteServerToClientStream(NetDataWriter stream)
     {
         // Send id of last move that was received from client
-        stream.Put(LastProcessedMoveSeq);
+        stream.Put((ushort)Seq_LastProcessed);
 
         // Send new pco state
         ControlledObject.Serialize(stream);
@@ -206,20 +222,33 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         PlayerInputsToTransmit[1].Deserialize(stream);
         PlayerInputsToTransmit[2].Deserialize(stream);
 
+        Debug.Log("Read client inputs: ");
+        Debug.Log($"Seq: {PlayerInputsToTransmit[0].Seq} Move:{PlayerInputsToTransmit[0].MoveDirection}");
+        Debug.Log($"Seq: {PlayerInputsToTransmit[1].Seq} Move:{PlayerInputsToTransmit[1].MoveDirection}");
+        Debug.Log($"Seq: {PlayerInputsToTransmit[2].Seq} Move:{PlayerInputsToTransmit[2].MoveDirection}");
+
+
         // In a 0 packet loss scenario Input [1] was last sequence and input [2] is this sequence
         // but we will look further back, and if they are all new then apply all 3 moves        
-        int nextMoveSeq = LastProcessedMoveSeq + 1;
+        ushort nextMoveSeq = (ushort)(Seq_LastProcessed + 1);
+        Debug.Log($"LastProcessedMoveSeq: {Seq_LastProcessed} NextMove: {nextMoveSeq}");
         int i = 2;
         for (; i >= 0; i--)
         {
-            if (PlayerInputWindow.Input[i].Seq == nextMoveSeq) break;
+            Debug.Log($"PlayerInputsToTransmit[{i}].Seq: {PlayerInputsToTransmit[i].Seq}");
+            if (PlayerInputsToTransmit[i].Seq == nextMoveSeq) break;
         }
+
+
+        i = i >= 0 ? i : 0;
 
         // This should always have at least one new move but up to 3
         for (int j = i; j <= 2; j++)
         {
-            ControlledObject.ApplyInput(PlayerInputWindow.Input[i]);
-            LastProcessedMoveSeq = PlayerInputWindow.Input[i].Seq;
+            Debug.Log($"Looking at PlayerInputsToTransmit[{j}]");
+            ControlledObject.ApplyInput(PlayerInputsToTransmit[j]);
+            Seq_LastProcessed = PlayerInputsToTransmit[j].Seq;
+            Debug.Log($"Applied PlayerInputsToTransmit[{j}] with Seq: {PlayerInputsToTransmit[j].Seq}");
         }
     }
 
@@ -227,17 +256,27 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
     {
         // read id of last processed move and use it to update
         // the buffer of stored moves
-        LastProcessedMoveSeq = stream.GetUShort();
-        PlayerInputWindow.AckSeq(LastProcessedMoveSeq);
+        Seq_LastProcessed = stream.GetUShort();
+        Log.Debug($"Seq_LastProcessed from server: {Seq_LastProcessed}");
+
+        
+        PlayerInputWindow.AckSeq((ushort)Seq_LastProcessed);
+
+        Log.Debug($"Updated PlayerInputWindow");
 
         // read state of player obj and set it using remainder of moves in buffer to predict again
         ControlledObject.Deserialize(stream);
+
+        Log.Debug($"Read controlled object state");
+
 
         // read state of all replicated pco and predict
         for (int i = 0; i < PlayerInputWindow.Count; i++)
         {
             ControlledObject.ApplyInput(PlayerInputWindow.Input[PlayerInputWindow.First + i]);
         }
+
+        Log.Debug($"Finished applying un-acked moves");
     }
 
     public void UpdateControlledObject()
@@ -245,8 +284,12 @@ public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
         // sample move
         int nextSampleIndex = PlayerInputWindow.SampleUserInput();
 
-        if (nextSampleIndex > 0)
+    
+
+        if (nextSampleIndex >= 0)
         {
+            Log.Debug($"Current Sample - PlayerInputWindow[{nextSampleIndex}] Seq: {PlayerInputWindow.Input[nextSampleIndex].Seq} Move: {PlayerInputWindow.Input[nextSampleIndex].MoveDirection}");
+
             // apply move 
             ControlledObject.ApplyInput(PlayerInputWindow.Input[nextSampleIndex]);
 

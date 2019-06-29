@@ -1,12 +1,12 @@
-﻿using LiteNetLib;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib;
 using LiteNetLib.Utils;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 
-[CreateAssetMenu(fileName = "GameClientReactor", menuName = "GameClientReactor")]
-public class GameClientReactor : ScriptableNetEventReactor
+public class GameClientReactor : NetEventReactor
 {
     public GameObject EntityPrefab;
 
@@ -26,6 +26,8 @@ public class GameClientReactor : ScriptableNetEventReactor
 
     public ushort UserInputSeq = 0;
 
+    public NLogger Log;
+
     private enum State
     {
         CONNECTING,
@@ -35,14 +37,14 @@ public class GameClientReactor : ScriptableNetEventReactor
 
     private State CurrentState;
 
-    public override void Initialize(ILogger logger)
+    public GameClientReactor()
     {
-        base.Initialize(logger);
-
         CurrentState = State.CONNECTING;
 
+        Log = NLogManager.Instance.GetLogger(this);
     }
 
+  
 
     public override void React(GameEvent evt)
     {
@@ -70,7 +72,7 @@ public class GameClientReactor : ScriptableNetEventReactor
             {
                 if (!R_GameObjects.ContainsKey(r.Id))
                 {
-                    R_GameObjects[r.Id] = Instantiate(EntityPrefab);
+                    R_GameObjects[r.Id] = GameObject.Instantiate(EntityPrefab);
                 }
                 ReplicatableGameObject rgo = r.Entity as ReplicatableGameObject;
                 R_GameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
@@ -82,7 +84,7 @@ public class GameClientReactor : ScriptableNetEventReactor
 
     private void OnNetEvent(NetEvent evt)
     {
-        log.Log($"NetEvent: {evt.Type} ");
+        Log.Debug($"NetEvent: {evt.Type} ");
         switch (evt.Type)
         {
             case NetEvent.EType.Connect:
@@ -96,11 +98,11 @@ public class GameClientReactor : ScriptableNetEventReactor
 
     private void OnConnected(NetEvent evt)
     {
-        log.Log("I'm connected!");
+        Log.Debug("I'm connected!");
         CurrentState = State.PLAYING;
         Client = new GameClient(evt.Peer);
 
-        GameObject playerGO = Instantiate(PlayerPrefab);
+        GameObject playerGO = GameObject.Instantiate(PlayerPrefab);
 
         PlayerControlledObject pco = new PlayerControlledObject { Entity = playerGO, PlayerController = playerGO.GetComponent<CharacterController>() };
 
