@@ -8,89 +8,6 @@ using Object = UnityEngine.Object;
 
 namespace Assets.Scripts
 {
-    public class TestPacketStreamReactor : NetEventReactor
-    {
-        private GameClient _client;
-        public Dictionary<int, GameClient> Clients = new Dictionary<int, GameClient>();
-
-
-        public override void React(GameEvent evt)
-        {
-            switch (evt.EventId)
-            {
-                case GameEvent.Event.NetEvent:
-                    React(evt.NetEvent);
-                    break;
-                case GameEvent.Event.Update:
-                    UpdateClients();
-                    break;
-            }
-        }
-
-        private void UpdateClients()
-        {
-            foreach (GameClient gc in Clients.Values)
-            {
-                gc.PacketStream.UpdateIncoming();
-                gc.PacketStream.UpdateOutgoing();
-            }
-        }
-
-        private void React(NetEvent evt)
-        {
-            switch (evt.Type)
-            {
-                case NetEvent.EType.ConnectionRequest:
-                    evt.ConnectionRequest.Accept(); // who needs security
-                    break;
-                case NetEvent.EType.Connect:
-                    HandleNewConnection(evt);
-                    break;
-                case NetEvent.EType.Receive:
-                    HandleNetworkReceive(evt);
-                    break;
-                case NetEvent.EType.Disconnect:
-                    break;
-                case NetEvent.EType.ReceiveUnconnected:
-                    break;
-                case NetEvent.EType.Error:
-                    break;
-                case NetEvent.EType.ConnectionLatencyUpdated:
-                    break;
-                case NetEvent.EType.DiscoveryRequest:
-                    break;
-                case NetEvent.EType.DiscoveryResponse:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-
-        private void HandleNetworkReceive(NetEvent evt)
-        {
-            Debug.Log($"RECEIVED NETWORK EVENT FROM PEER: {evt.Peer.Id}!");
-
-            if (Clients.Count == 0)
-            {
-                _client = _client ?? new GameClient(evt.Peer);
-
-                _client.PacketStream.DataReceivedEvents.Add(evt);
-            }
-            else
-            {
-                Clients[evt.Peer.Id].PacketStream.DataReceivedEvents.Add(evt);
-            }
-        }
-
-        private void HandleNewConnection(NetEvent evt)
-        {
-            Debug.Log("GOT NEW CONNECTION!");
-            Debug.Log($"PeerId: {evt.Peer.Id}");
-            Clients[evt.Peer.Id] = new GameClient(evt.Peer);
-        }
-    }
-
-
     public class GameServerReactor : NetEventReactor
     {
         private readonly Stack<int> _entityIds;
@@ -223,7 +140,7 @@ namespace Assets.Scripts
             // Need an entity in the game world..
             int nextEntityId = _entityIds.Pop();
             //Entities[nextEntityId] = Instantiate(ClientPrefab);
-            GameClient client = new GameClient(evt.Peer)
+            GameClient client = new GameClient(evt.Peer, true)
             {
                 CurrentState = GameClient.State.Playing,
                 EntityId = nextEntityId
@@ -231,7 +148,7 @@ namespace Assets.Scripts
 
             GameObject clientGameObj = Object.Instantiate(ClientPrefab);
 
-            client.PlayerControlledObjectSys.ControlledObject = new PlayerControlledObject
+            client.PlayerControlledObjectSys.CurrentlyControlledObject = new ControlledObject
             {
                 Entity = clientGameObj,
                 PlayerController = clientGameObj.GetComponent<CharacterController>()

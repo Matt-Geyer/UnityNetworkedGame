@@ -99,14 +99,14 @@ namespace Assets.Scripts
         {
             Log.Debug("I'm connected!");
             _currentState = State.Playing;
-            Client = new GameClient(evt.Peer);
+            Client = new GameClient(evt.Peer, isServer:false);
 
             GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
-            PlayerControlledObject pco = new PlayerControlledObject
+            ControlledObject pco = new ControlledObject
                 {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>()};
 
-            Client.PlayerControlledObjectSys.ControlledObject = pco;
+            Client.PlayerControlledObjectSys.CurrentlyControlledObject = pco;
         }
 
         private enum State

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Assets.Scripts
 {
-    public class PlayerControlledObject : IPersistentObject
+    public class ControlledObject : IPersistentObject
     {
         public static PersistentObjectRep StaticObjectRep;
 

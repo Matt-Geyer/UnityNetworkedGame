@@ -3,12 +3,9 @@ using LiteNetLib.Utils;
 
 namespace Assets.Scripts
 {
-    public interface IReplicationSystem
+    public interface IReplicationSystem : IPacketStreamReader, IPacketStreamWriter, IPacketTransmissionNotificationReceiver
     {
         void StartReplicating(ReplicatableObject obj);
         void StopReplicating(ReplicatableObject obj);
-        void ProcessNotifications(List<PacketTransmissionRecord> notifications);
-        void ProcessReplicationData(NetDataReader stream);
-        void WriteReplicationData(NetDataWriter stream, PacketTransmissionRecord packetTransmissionRecord);
     }
 }

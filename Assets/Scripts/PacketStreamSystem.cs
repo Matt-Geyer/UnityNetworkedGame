@@ -1,4 +1,8 @@
-﻿using AiUnity.NLog.Core;
+﻿#if DEBUG
+#define SQUIGGLE
+#endif
+
+using AiUnity.NLog.Core;
 using LiteNetLib;
 using LiteNetLib.Utils;
 using System;
@@ -34,17 +38,22 @@ namespace Assets.Scripts
 
         private PacketHeader _header;
 
-        private readonly ReplicationSystem _replicationSystem;
-
-        private readonly IPlayerControlledObjectSystem _controlledObjectSystem;
-
         private readonly NLogger _log;
 
-        public PacketStreamSystem(NetPeer peer, ReplicationSystem replication, IPlayerControlledObjectSystem playerControlledObjectSystem)
+        private readonly List<IPacketStreamReader> _streamProcessors;
+
+        private readonly List<IPacketStreamWriter> _streamWriters;
+
+        private readonly List<IPacketTransmissionNotificationReceiver> _notificationReceivers;
+
+
+        public PacketStreamSystem(NetPeer peer, List<IPacketStreamReader> streamProcessors, List<IPacketStreamWriter> streamWriters, List<IPacketTransmissionNotificationReceiver> notificationReceivers)
         {
             _peer = peer ?? throw new ArgumentNullException(nameof(peer));
-            _replicationSystem = replication ?? throw new ArgumentNullException(nameof(replication));
-            _controlledObjectSystem = playerControlledObjectSystem ?? throw new ArgumentNullException(nameof(playerControlledObjectSystem));
+            _streamProcessors = streamProcessors ?? throw new ArgumentNullException(nameof(streamProcessors));
+            _streamWriters = streamWriters ?? throw new ArgumentNullException(nameof(streamWriters));
+            _notificationReceivers =
+                notificationReceivers ?? throw new ArgumentNullException(nameof(notificationReceivers));
             _log = NLogManager.Instance.GetLogger(this);
             _transmissionRecords = new Queue<PacketTransmissionRecord>();
             _transmissionNotifications = new List<PacketTransmissionRecord>();
@@ -58,6 +67,8 @@ namespace Assets.Scripts
             if (DataReceivedEvents.Count == 0) return;
 
             _log.Debug($"UPDATE INCOMING - Frame: {Time.frameCount} Seq: {Seq}\n");
+
+            DebugGraph.Log("Packets Received", DataReceivedEvents.Count);
 
             try
             {
@@ -150,19 +161,10 @@ namespace Assets.Scripts
 
                     _log.Debug("Finished generating notifications");
 
-                    // Give stream to each system to process
-                    // todo this will be generalized to an ordered list of stream readers and writers
-                    if (host)
+                    // Give stream to each system to processors in the order they were added
+                   foreach (IPacketStreamReader streamProcessor in _streamProcessors)
                     {
-                        _log.Debug("Giving stream to _controlledObjectSystem");
-                        _controlledObjectSystem.ProcessClientToServerStream(reader);
-                    }
-                    else
-                    {
-                        _log.Debug("Giving stream to _controlledObjectSystem");
-                        _controlledObjectSystem.ProcessServerToClientStream(reader);
-                        _log.Debug("Giving stream to ReplicationSystem");
-                        _replicationSystem.ProcessReplicationData(reader);
+                        streamProcessor.ReadPacketStream(reader);
                     }
                 }
                 _log.Debug($"SeqLastNotified - After: {SeqLastNotified}");
@@ -192,10 +194,10 @@ namespace Assets.Scripts
                     }
                 }
 
-                if (host)
+                // Give notifications to any stream writers that are interested in whether or not their transmissions made it
+                foreach (IPacketTransmissionNotificationReceiver notificationReceiver in _notificationReceivers)
                 {
-
-                    _replicationSystem.ProcessNotifications(_transmissionNotifications);
+                    notificationReceiver.ReceiveNotifications(_transmissionNotifications);
                 }
             }
             catch (Exception e)
@@ -240,21 +242,21 @@ namespace Assets.Scripts
             _header.Serialize(_netWriter);
 
             // let each stream manager write until the packet is full
-            if (host)
+            foreach (IPacketStreamWriter streamWriter in _streamWriters)
             {
-                _controlledObjectSystem.WriteServerToClientStream(_netWriter);
-                _replicationSystem.WriteReplicationData(_netWriter, record);
+                streamWriter.WriteToPacketStream(_netWriter, record);
             }
-            else
-            {
-                _controlledObjectSystem.WriteClientToServerStream(_netWriter);
-            }
-
+            
             // create output events
             _transmissionRecords.Enqueue(record);
 
             _peer.Send(_netWriter.Data, 0, _netWriter.Length, DeliveryMethod.Unreliable);
+
             _log.Debug($"Sent Bytes: {_netWriter.Length}");
+
+#if SQUIGGLE
+            DebugGraph.Log("Sent Bytes", _netWriter.Length, Color.green);
+#endif
             _netWriter.Reset();
 
             // Only increment our seq on successful send
@@ -309,6 +311,5 @@ namespace Assets.Scripts
             return SeqIsAheadButInsideWindow32(check, end) && SeqIsAheadButInsideWindow32(start, check);
         }
     }
-
 }
 

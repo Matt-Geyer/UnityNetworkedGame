@@ -8,6 +8,8 @@ Assets/AssetStoreTools*
 # App store purchases
 Assets/AiUnity
 Assets/AiUnity.meta
+Assets/Mystery
+Assets/Mystery.meta
 
 # Visual Studio cache directory
 .vs/

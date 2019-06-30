@@ -38,7 +38,7 @@ namespace  Assets.Scripts
             obj.GetReplicationRecord(Id).Status = ReplicationRecord.ReplicationSystemStatus.Removed;
         }
 
-        public void ProcessNotifications(List<PacketTransmissionRecord> notifications)
+        public void ReceiveNotifications(List<PacketTransmissionRecord> notifications)
         {
             foreach (PacketTransmissionRecord notification in notifications)
             {
@@ -72,7 +72,7 @@ namespace  Assets.Scripts
             }
         }
 
-        public void ProcessReplicationData(NetDataReader stream)
+        public void ReadPacketStream(NetDataReader stream)
         {
             try
             {
@@ -131,7 +131,7 @@ namespace  Assets.Scripts
             }
         }
 
-        public void WriteReplicationData(NetDataWriter stream, PacketTransmissionRecord packetTransmissionRecord)
+        public void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord packetTransmissionRecord)
         {
 
             try
