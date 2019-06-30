@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using Assets.Scripts.Network;
 using LiteNetLib.Utils;
 
 namespace LiteNetLib

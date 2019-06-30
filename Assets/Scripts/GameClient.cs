@@ -1,41 +1,35 @@
 ﻿using System;
-using AiUnity.NLog.Core;
 using LiteNetLib;
 
 namespace Assets.Scripts
 {
-    public class GameClient 
+    public class GameClient
     {
-        public readonly NetPeer Peer;
+        public enum State
+        {
+            Loading,
+            Playing
+        }
 
         public readonly PacketStreamSystem PacketStream;
 
-        public readonly ReplicationSystem Replication;
+        public readonly NetPeer Peer;
 
         public readonly IPlayerControlledObjectSystem PlayerControlledObjectSys;
 
-        public ushort LastProcessedSequence;
-
-        public int EntityId;
-
-        private readonly NLogger Log;
-
-        public enum State
-        {
-            LOADING,
-            PLAYING
-        }
+        public readonly ReplicationSystem Replication;
 
         public State CurrentState;
 
+        public int EntityId;
+
+
         public GameClient(NetPeer peer)
         {
-            Peer = peer ?? throw new ArgumentNullException("peer");
-            Log = NLogManager.Instance.GetLogger(this);
+            Peer = peer ?? throw new ArgumentNullException(nameof(peer));
             Replication = new ReplicationSystem();
             PlayerControlledObjectSys = new PlayerControlledObjectSystem();
             PacketStream = new PacketStreamSystem(Peer, Replication, PlayerControlledObjectSys);
         }
     }
 }
-

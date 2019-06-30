@@ -109,6 +109,7 @@ namespace  Assets.Scripts
                             // remove the record but also need to destroy game object or queue it to be destroyed..
                             if (ReplicatedObjects.TryGetValue(repObjId, out ReplicationRecord record))
                             {
+                                Log.Debug($"Removing record: {record.Id}");
                                 //GameObject.Destroy(record.Entity);
                                 ReplicatedObjects.Remove(repObjId);
                             }
@@ -126,7 +127,7 @@ namespace  Assets.Scripts
             catch (Exception e)
             {
                 Log.Debug(e.Message);
-                throw e;
+                throw;
             }
         }
 
@@ -208,7 +209,7 @@ namespace  Assets.Scripts
             catch (Exception e)
             {
                 Log.Debug(e.Message);
-                throw e;
+                throw;
             }
         }
     }

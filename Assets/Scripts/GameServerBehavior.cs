@@ -1,18 +1,18 @@
-﻿using UnityEngine;
+﻿using Assets.Scripts.Network;
+using UnityEngine;
 
 namespace Assets.Scripts
 {
     [RequireComponent(typeof(UdpNetworkBehavior))]
     public class GameServerBehavior : MonoBehaviour
     {
+        private UdpNetworkBehavior _network;
 
         public GameObject ObjectPrefab;
         public GameObject PlayerPrefab;
 
-        UdpNetworkBehavior Network;
-
         // Start is called before the first frame update
-        void Start()
+        private void Start()
         {
             GameServerReactor reactor = new GameServerReactor
             {
@@ -21,17 +21,11 @@ namespace Assets.Scripts
             };
 
             reactor.Initialize();
-            Network = GetComponent<UdpNetworkBehavior>();
-            Network.R_GameReactor = reactor;
-            Network.ShouldConnect = false;
-            Network.ShouldBind = true;
-            Network.enabled = true;
-        }
-
-        // Update is called once per frame
-        void Update()
-        {
-        
+            _network = GetComponent<UdpNetworkBehavior>();
+            _network.RGameReactor = reactor;
+            _network.ShouldConnect = false;
+            _network.ShouldBind = true;
+            _network.enabled = true;
         }
     }
 }

@@ -1,7 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using AiUnity.NLog.Core;
+using Assets.Scripts.Network;
 using LiteNetLib;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Assets.Scripts
 {
@@ -11,34 +14,26 @@ namespace Assets.Scripts
 
         public GameObject PlayerPrefab;
 
-        public PlayerController PC;
-
         public GameClient Client;
 
         public GameObject[] Entities = new GameObject[100];
 
-        public Dictionary<ushort, GameObject> R_GameObjects = new Dictionary<ushort, GameObject>();
-
-        public int MyEntityId = 0;
-
-        public List<UserInputSample> UserInputSamples = new List<UserInputSample>();
-
-        public ushort UserInputSeq = 0;
+        public Dictionary<ushort, GameObject> RGameObjects = new Dictionary<ushort, GameObject>();
 
         public NLogger Log;
 
         private enum State
         {
-            CONNECTING,
-            READY,
-            PLAYING
+            Connecting,
+            Ready,
+            Playing
         }
 
-        private State CurrentState;
+        private State _currentState;
 
         public GameClientReactor()
         {
-            CurrentState = State.CONNECTING;
+            _currentState = State.Connecting;
 
             Log = NLogManager.Instance.GetLogger(this);
         }
@@ -49,36 +44,37 @@ namespace Assets.Scripts
         {
             switch (evt.EventId)
             {
-                case GameEvent.Event.NETEVENT:
+                case GameEvent.Event.NetEvent:
                     OnNetEvent(evt.NetEvent);
                     break;
-                case GameEvent.Event.UPDATE:
+                case GameEvent.Event.Update:
                     OnUpdate();
                     break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }   
 
         private void OnUpdate()
         {
-            if (CurrentState == State.PLAYING)
+            if (_currentState != State.Playing) return;
+
+            Client.PacketStream.UpdateIncoming();
+
+            Client.PlayerControlledObjectSys.UpdateControlledObject();
+
+            // Update game
+            foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
             {
-                Client.PacketStream.UpdateIncoming();
-
-                Client.PlayerControlledObjectSys.UpdateControlledObject();
-
-                // Update game
-                foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
+                if (!RGameObjects.ContainsKey(r.Id))
                 {
-                    if (!R_GameObjects.ContainsKey(r.Id))
-                    {
-                        R_GameObjects[r.Id] = GameObject.Instantiate(EntityPrefab);
-                    }
-                    ReplicatableGameObject rgo = r.Entity as ReplicatableGameObject;
-                    R_GameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
+                    RGameObjects[r.Id] = Object.Instantiate(EntityPrefab);
                 }
-
-                Client.PacketStream.UpdateOutgoing();
+                ReplicatableGameObject rgo = (ReplicatableGameObject)r.Entity;
+                RGameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
             }
+
+            Client.PacketStream.UpdateOutgoing();
         }
 
         private void OnNetEvent(NetEvent evt)
@@ -92,18 +88,34 @@ namespace Assets.Scripts
                 case NetEvent.EType.Receive:
                     Client.PacketStream.DataReceivedEvents.Add(evt);
                     break;
+                case NetEvent.EType.Disconnect:
+                    break;
+                case NetEvent.EType.ReceiveUnconnected:
+                    break;
+                case NetEvent.EType.Error:
+                    break;
+                case NetEvent.EType.ConnectionLatencyUpdated:
+                    break;
+                case NetEvent.EType.DiscoveryRequest:
+                    break;
+                case NetEvent.EType.DiscoveryResponse:
+                    break;
+                case NetEvent.EType.ConnectionRequest:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
 
         private void OnConnected(NetEvent evt)
         {
             Log.Debug("I'm connected!");
-            CurrentState = State.PLAYING;
+            _currentState = State.Playing;
             Client = new GameClient(evt.Peer);
 
-            GameObject playerGO = GameObject.Instantiate(PlayerPrefab);
+            GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
-            PlayerControlledObject pco = new PlayerControlledObject { Entity = playerGO, PlayerController = playerGO.GetComponent<CharacterController>() };
+            PlayerControlledObject pco = new PlayerControlledObject { Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>() };
 
             Client.PlayerControlledObjectSys.ControlledObject = pco;
 

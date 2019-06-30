@@ -67,7 +67,7 @@ namespace Assets.Scripts
             }
             else
             {
-                Data = Data >> 1;
+                Data >>= 1;
                 StartSeq++;
                 EndSeq++;
             }
@@ -103,7 +103,7 @@ namespace Assets.Scripts
 
         public void DropStartSequence()
         {
-            Data = Data >> 1;
+            Data >>= 1;
             StartSeq++;
             SeqCount--;
             // end seq stays the same
