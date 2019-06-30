@@ -201,7 +201,7 @@ namespace Assets.Scripts
             catch (Exception e)
             {
                 _log.Debug(e.Message);
-                throw e;
+                throw;
             }
             finally
             {

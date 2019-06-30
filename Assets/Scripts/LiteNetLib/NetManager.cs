@@ -1,6 +1,6 @@
 #if DEBUG
 #define STATS_ENABLED
-#define DEBUG_MESSAGES
+//#define DEBUG_MESSAGES
 #endif
 
 using System;

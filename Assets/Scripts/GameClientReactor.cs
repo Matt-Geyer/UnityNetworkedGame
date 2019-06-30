@@ -10,26 +10,18 @@ namespace Assets.Scripts
 {
     public class GameClientReactor : NetEventReactor
     {
-        public GameObject EntityPrefab;
-
-        public GameObject PlayerPrefab;
+        private State _currentState;
 
         public GameClient Client;
 
         public GameObject[] Entities = new GameObject[100];
-
-        public Dictionary<ushort, GameObject> RGameObjects = new Dictionary<ushort, GameObject>();
+        public GameObject EntityPrefab;
 
         public NLogger Log;
 
-        private enum State
-        {
-            Connecting,
-            Ready,
-            Playing
-        }
+        public GameObject PlayerPrefab;
 
-        private State _currentState;
+        public Dictionary<ushort, GameObject> RGameObjects = new Dictionary<ushort, GameObject>();
 
         public GameClientReactor()
         {
@@ -38,7 +30,6 @@ namespace Assets.Scripts
             Log = NLogManager.Instance.GetLogger(this);
         }
 
-  
 
         public override void React(GameEvent evt)
         {
@@ -53,7 +44,7 @@ namespace Assets.Scripts
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-        }   
+        }
 
         private void OnUpdate()
         {
@@ -66,11 +57,8 @@ namespace Assets.Scripts
             // Update game
             foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
             {
-                if (!RGameObjects.ContainsKey(r.Id))
-                {
-                    RGameObjects[r.Id] = Object.Instantiate(EntityPrefab);
-                }
-                ReplicatableGameObject rgo = (ReplicatableGameObject)r.Entity;
+                if (!RGameObjects.ContainsKey(r.Id)) RGameObjects[r.Id] = Object.Instantiate(EntityPrefab);
+                ReplicatableGameObject rgo = (ReplicatableGameObject) r.Entity;
                 RGameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
             }
 
@@ -115,13 +103,17 @@ namespace Assets.Scripts
 
             GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
-            PlayerControlledObject pco = new PlayerControlledObject { Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>() };
+            PlayerControlledObject pco = new PlayerControlledObject
+                {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>()};
 
             Client.PlayerControlledObjectSys.ControlledObject = pco;
-
         }
 
-
-
+        private enum State
+        {
+            Connecting,
+            Ready,
+            Playing
+        }
     }
 }

@@ -158,21 +158,19 @@ namespace Assets.Scripts.Network
 
             // No point actually awaiting this call.. it kicks off a 
             // recurring execution where the finish method always calls the start method again
+#pragma warning disable 4014
             _socketListener.StartAsyncReceive();
+#pragma warning restore 4014
 
 
             // Start thread that polls for outgoing udp messages and sends them on the socket
             _processOutgoing.Start(new object[] {_socketSender, _outgoingMessagePoller, _cancellationSource.Token});
 
-            // Start coroutine that will send the 
+            // Start coroutine that will send the check timeout event
             StartCoroutine("SendCheckTimeoutEvent");
-
-            if (ShouldBind)
-                StartCoroutine("SendUpdateEvent");
         }
 
-
-        // Need to think about whether this breaks determinism of the reactor or not
+        
         private IEnumerator SendCheckTimeoutEvent()
         {
             while (true)
@@ -181,7 +179,6 @@ namespace Assets.Scripts.Network
                 yield return new WaitForSeconds(CheckTimeoutFrequencySeconds);
             }
         }
-
 
         /// <summary>
         /// </summary>

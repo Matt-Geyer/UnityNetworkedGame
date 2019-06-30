@@ -10,11 +10,11 @@ namespace Assets.Scripts
 
         public float Speed;
 
-        private CharacterController Controller;
+        private CharacterController _controller;
 
         public void Start()
         {
-            Controller = GetComponent<CharacterController>();
+            _controller = GetComponent<CharacterController>();
             Speed = 2f;
         }
 
@@ -40,7 +40,7 @@ namespace Assets.Scripts
             if (magnitude > 1) input.MoveDirection.Normalize();
         
 
-            Controller.Move(input.MoveDirection * Time.fixedDeltaTime * Speed);
+            _controller.Move(input.MoveDirection * Time.fixedDeltaTime * Speed);
 
 
             for (int i = 0; i < input.PressedCount; i++)
