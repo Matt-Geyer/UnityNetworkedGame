@@ -54,7 +54,7 @@ namespace Assets.Scripts
             // stop replicating a pco
         }
 
-        public abstract void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord record);
+        public abstract void WriteToPacketStream(NetDataWriter stream);
         
         public abstract void ReadPacketStream(NetDataReader stream);
     }

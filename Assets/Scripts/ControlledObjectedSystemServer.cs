@@ -5,7 +5,7 @@ namespace Assets.Scripts
 {
     public sealed class ControlledObjectedSystemServer : ControlledObjectSystemBase
     {
-        public override void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord record)
+        public override void WriteToPacketStream(NetDataWriter stream)
         {
             // Send id of last move that was received from client
             stream.Put((ushort) SeqLastProcessed);

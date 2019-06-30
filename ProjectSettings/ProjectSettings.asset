@@ -542,7 +542,7 @@ PlayerSettings:
   webGLThreadsSupport: 0
   webGLWasmStreaming: 0
   scriptingDefineSymbols:
-    1: NLOG_ALL
+    1: NLOG_ALL;GAME_SERVER
     4: NLOG_ALL
     7: NLOG_ALL
     13: NLOG_ALL

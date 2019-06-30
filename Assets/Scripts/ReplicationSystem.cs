@@ -76,139 +76,125 @@ namespace Assets.Scripts
 
         public void ReadPacketStream(NetDataReader stream)
         {
-            try
+            ushort repObjId = stream.GetUShort();
+            while (repObjId != 0)
             {
-                ushort repObjId = stream.GetUShort();
-                while (repObjId != 0)
+                Log.Debug($"Reading ghost with id: {repObjId}");
+                // first read if there is a status change
+                if (stream.GetByte() == 1)
                 {
-                    Log.Debug($"Reading ghost with id: {repObjId}");
-                    // first read if there is a status change
+                    // read the status change
                     if (stream.GetByte() == 1)
                     {
-                        // read the status change
-                        if (stream.GetByte() == 1)
+                        Log.Debug("status changed: ADDED");
+                        // added so read the persistent obj id 
+                        byte objRepId = stream.GetByte();
+
+                        // Create new instance of the object
+                        IPersistentObject obj = PersistentObjectManager.CreatePersistentObject(objRepId);
+
+                        // unpack stream data
+                        obj.Deserialize(stream);
+
+                        ReplicatedObjects[repObjId] = new ReplicationRecord
                         {
-                            Log.Debug("status changed: ADDED");
-                            // added so read the persistent obj id 
-                            byte objRepId = stream.GetByte();
-
-                            // Create new instance of the object
-                            IPersistentObject obj = PersistentObjectManager.CreatePersistentObject(objRepId);
-
-                            // unpack stream data
-                            obj.Deserialize(stream);
-
-                            ReplicatedObjects[repObjId] = new ReplicationRecord
-                            {
-                                Id = repObjId,
-                                Entity = obj as ReplicatableObject
-                            };
-                        }
-                        else
-                        {
-                            Log.Debug("status changed: REMOVED");
-                            // remove the record but also need to destroy game object or queue it to be destroyed..
-                            if (ReplicatedObjects.TryGetValue(repObjId, out ReplicationRecord record))
-                            {
-                                Log.Debug($"Removing record: {record.Id}");
-                                //GameObject.Destroy(record.Entity);
-                                ReplicatedObjects.Remove(repObjId);
-                            }
-                        }
+                            Id = repObjId,
+                            Entity = obj as ReplicatableObject
+                        };
                     }
                     else
                     {
-                        Log.Debug("State update");
-                        // no status change just new state information  so unpack into existing replicated obj
-                        ReplicatedObjects[repObjId].Entity.Deserialize(stream);
+                        Log.Debug("status changed: REMOVED");
+                        // remove the record but also need to destroy game object or queue it to be destroyed..
+                        if (ReplicatedObjects.TryGetValue(repObjId, out ReplicationRecord record))
+                        {
+                            Log.Debug($"Removing record: {record.Id}");
+                            //GameObject.Destroy(record.Entity);
+                            ReplicatedObjects.Remove(repObjId);
+                        }
                     }
-
-                    repObjId = stream.GetUShort();
                 }
-            }
-            catch (Exception e)
-            {
-                Log.Debug(e.Message);
-                throw;
+                else
+                {
+                    Log.Debug("State update");
+                    // no status change just new state information  so unpack into existing replicated obj
+                    ReplicatedObjects[repObjId].Entity.Deserialize(stream);
+                }
+
+                repObjId = stream.GetUShort();
             }
         }
 
         public void WriteToPacketStream(NetDataWriter stream)
         {
-            try
+            ReplicationSystemTransmission transmission = new ReplicationSystemTransmission();
+
+            // sort by state change and then priority once it exists 
+            // TODO: flow control
+            // how know if we overflow the buffer before hand or keep an index
+            // for each write that doesn't overflow and then clear up to that index
+            // as soon as we go over. Can keep the max that rep system is allowed to write still within 
+            // the actual buffer size 
+            foreach (ReplicationRecord r in ReplicatedObjects.Values)
             {
-                ReplicationSystemTransmission transmission = new ReplicationSystemTransmission();
+                if (r.StateMask == 0 && r.Status == ReplicationRecord.ReplicationSystemStatus.None) continue;
 
-                // sort by state change and then priority once it exists 
-                // TODO: flow control
-                // how know if we overflow the buffer before hand or keep an index
-                // for each write that doesn't overflow and then clear up to that index
-                // as soon as we go over. Can keep the max that rep system is allowed to write still within 
-                // the actual buffer size 
-                foreach (ReplicationRecord r in ReplicatedObjects.Values)
+                Log.Debug($"Writing ghost: {r.Id}");
+                // Write the Id of the object that is referenced by the remote ReplicationSystem
+                stream.Put(r.Id);
+                // Write the state of the replicated object (need bitpacker so that this takes at most 2 bits)
+                if (r.Status == ReplicationRecord.ReplicationSystemStatus.None)
                 {
-                    if (r.StateMask == 0 && r.Status == ReplicationRecord.ReplicationSystemStatus.None) continue;
-
-                    Log.Debug($"Writing ghost: {r.Id}");
-                    // Write the Id of the object that is referenced by the remote ReplicationSystem
-                    stream.Put(r.Id);
-                    // Write the state of the replicated object (need bitpacker so that this takes at most 2 bits)
-                    if (r.Status == ReplicationRecord.ReplicationSystemStatus.None)
+                    Log.Debug("No status change");
+                    stream.Put((byte)0);
+                }
+                else
+                {
+                    stream.Put((byte)1);
+                    if (r.Status == ReplicationRecord.ReplicationSystemStatus.Added)
                     {
-                        Log.Debug("No status change");
-                        stream.Put((byte) 0);
+                        stream.Put((byte)1);
+                        // Write persistent object id for obj
+                        stream.Put(r.Entity.ObjectRep.Id);
+                        Log.Debug($"Status: ADDED. Writing object rep id: {r.Entity.ObjectRep.Id}");
                     }
                     else
                     {
-                        stream.Put((byte) 1);
-                        if (r.Status == ReplicationRecord.ReplicationSystemStatus.Added)
-                        {
-                            stream.Put((byte) 1);
-                            // Write persistent object id for obj
-                            stream.Put(r.Entity.ObjectRep.Id);
-                            Log.Debug($"Status: ADDED. Writing object rep id: {r.Entity.ObjectRep.Id}");
-                        }
-                        else
-                        {
-                            Log.Debug("Status: REMOVED");
-                            // removed
-                            stream.Put((byte) 0);
-                        }
+                        Log.Debug("Status: REMOVED");
+                        // removed
+                        stream.Put((byte)0);
                     }
-
-                    Log.Debug($"Serializing object into stream. Bytes before: {stream.Length}");
-                    // Write the object into the stream using the state mask for this rep system
-                    r.Entity.Serialize(stream, r.StateMask);
-                    Log.Debug($"After serializing size: {stream.Length}");
-
-
-                    // Write state and status to transmission record
-                    ReplicatedObjectTransmissionRecord tr = new ReplicatedObjectTransmissionRecord
-                    {
-                        StateMask = r.StateMask,
-                        Status = r.Status,
-                        RepRecord = r // not loving this
-                    };
-
-                    // This is the easiest way I could think of to reference the latest transmission 
-                    if (r.LastTransmission != null) r.LastTransmission.NextTransmission = tr;
-                    r.LastTransmission = tr;
-
-                    transmission.Records.Add(tr);
-
-                    // Clear masks
-                    r.Status = ReplicationRecord.ReplicationSystemStatus.None;
-                    r.StateMask = 0;
                 }
 
-                // Write 0 which isn't a valid id so the remote stream will know that's the end of the data
-                stream.Put((ushort) 0);
+                Log.Debug($"Serializing object into stream. Bytes before: {stream.Length}");
+                // Write the object into the stream using the state mask for this rep system
+                r.Entity.Serialize(stream, r.StateMask);
+                Log.Debug($"After serializing size: {stream.Length}");
+
+
+                // Write state and status to transmission record
+                ReplicatedObjectTransmissionRecord tr = new ReplicatedObjectTransmissionRecord
+                {
+                    StateMask = r.StateMask,
+                    Status = r.Status,
+                    RepRecord = r // not loving this
+                };
+
+                // This is the easiest way I could think of to reference the latest transmission 
+                if (r.LastTransmission != null) r.LastTransmission.NextTransmission = tr;
+                r.LastTransmission = tr;
+
+                transmission.Records.Add(tr);
+
+                // Clear masks
+                r.Status = ReplicationRecord.ReplicationSystemStatus.None;
+                r.StateMask = 0;
             }
-            catch (Exception e)
-            {
-                Log.Debug(e.Message);
-                throw;
-            }
+
+            // Write 0 which isn't a valid id so the remote stream will know that's the end of the data
+            stream.Put((ushort)0);
+
+            _transmissions.Enqueue(transmission);
         }
     }
 }

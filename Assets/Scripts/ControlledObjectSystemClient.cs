@@ -29,7 +29,7 @@ namespace Assets.Scripts
             Log.Debug("Finished applying un-acked moves");
         }
 
-        public override void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord transmissionRecord)
+        public override void WriteToPacketStream(NetDataWriter stream)
         {
             // write players last 3 moves to stream
             PlayerInputsToTransmit[0].Serialize(stream);
