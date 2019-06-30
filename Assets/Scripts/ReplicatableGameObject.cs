@@ -96,7 +96,7 @@ namespace Assets.Scripts
 
             foreach (ReplicationRecord r in ReplicationRecords.Values)
             {
-                r.StateMask = r.StateMask | changedMask;
+                r.StateMask |= changedMask;
             }
         }
 

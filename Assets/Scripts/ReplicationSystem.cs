@@ -1,20 +1,25 @@
-﻿using AiUnity.NLog.Core;
-using LiteNetLib.Utils;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using AiUnity.NLog.Core;
+using LiteNetLib.Utils;
 
-namespace  Assets.Scripts
+namespace Assets.Scripts
 {
     public class ReplicationSystem : IReplicationSystem
     {
+        private readonly Queue<ReplicationSystemTransmission> _transmissions;
+
+        public readonly Dictionary<ushort, ReplicationRecord> ReplicatedObjects =
+            new Dictionary<ushort, ReplicationRecord>();
+
         public int Id;
-        public ushort NextId = 1;
-        public readonly Dictionary<ushort, ReplicationRecord> ReplicatedObjects = new Dictionary<ushort, ReplicationRecord>();
         public NLogger Log;
+        public ushort NextId = 1;
 
         public ReplicationSystem()
         {
             Log = NLogManager.Instance.GetLogger(this);
+            _transmissions = new Queue<ReplicationSystemTransmission>();
         }
 
         public void StartReplicating(ReplicatableObject obj)
@@ -34,40 +39,37 @@ namespace  Assets.Scripts
 
         public void StopReplicating(ReplicatableObject obj)
         {
-            // Will actually be removed once acked by remote rep manager?
+            // Will actually be removed once ACKed by remote rep manager?
             obj.GetReplicationRecord(Id).Status = ReplicationRecord.ReplicationSystemStatus.Removed;
         }
 
-        public void ReceiveNotifications(List<PacketTransmissionRecord> notifications)
+        public void ReceiveNotifications(List<bool> notifications)
         {
-            foreach (PacketTransmissionRecord notification in notifications)
+            foreach (bool dropped in notifications)
             {
-                if (notification.Received == false)
-                {
-                    foreach (ReplicatedObjectTransmissionRecord rotr in notification.ReplicationTransmissions)
-                    {
-                        // Since this packet was lost we know that the client hasn't synced the state
-                        // represented in the state mask for this object so we want to set those bits
-                        // in the objects state mask again so that those pieces of state are transmitted this iteration
-                        ReplicatedObjectTransmissionRecord nextRotr = rotr.NextTransmission;
-                        while (nextRotr != null)
-                        {
-                            // We want to exclude any bits that were set in transmissions that came after the one we are being notified about
-                            rotr.StateMask = rotr.StateMask ^ (rotr.StateMask & nextRotr.StateMask);
-                            rotr.Status = rotr.Status ^ (rotr.Status & nextRotr.Status);
-                            nextRotr = nextRotr.NextTransmission;
-                        }
+                ReplicationSystemTransmission transmission = _transmissions.Dequeue();
 
-                        // The state mask in rotr.StateMask now only contains bits that weren't
-                        // set set in subsequent transmissions so we want to make sure all those bits
-                        // are set for the next transmission
-                        rotr.RepRecord.StateMask |= rotr.StateMask;
-                        rotr.RepRecord.Status |= rotr.Status;
-                    }
-                }
-                else
+                if (!dropped) continue;
+
+                foreach (ReplicatedObjectTransmissionRecord tr in transmission.Records)
                 {
-                    // ?
+                    // Since this packet was lost we know that the client hasn't synced the state
+                    // represented in the state mask for this object so we want to set those bits
+                    // in the objects state mask again so that those pieces of state are transmitted this iteration
+                    ReplicatedObjectTransmissionRecord nextTransmission = tr.NextTransmission;
+                    while (nextTransmission != null)
+                    {
+                        // We want to exclude any bits that were set in transmissions that came after the one we are being notified about
+                        tr.StateMask ^= tr.StateMask & nextTransmission.StateMask;
+                        tr.Status ^= tr.Status & nextTransmission.Status;
+                        nextTransmission = nextTransmission.NextTransmission;
+                    }
+
+                    // The state mask in tr.StateMask now only contains bits that weren't
+                    // set set in subsequent transmissions so we want to make sure all those bits
+                    // are set for the next transmission
+                    tr.RepRecord.StateMask |= tr.StateMask;
+                    tr.RepRecord.Status |= tr.Status;
                 }
             }
         }
@@ -83,7 +85,6 @@ namespace  Assets.Scripts
                     // first read if there is a status change
                     if (stream.GetByte() == 1)
                     {
-
                         // read the status change
                         if (stream.GetByte() == 1)
                         {
@@ -121,6 +122,7 @@ namespace  Assets.Scripts
                         // no status change just new state information  so unpack into existing replicated obj
                         ReplicatedObjects[repObjId].Entity.Deserialize(stream);
                     }
+
                     repObjId = stream.GetUShort();
                 }
             }
@@ -131,11 +133,12 @@ namespace  Assets.Scripts
             }
         }
 
-        public void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord packetTransmissionRecord)
+        public void WriteToPacketStream(NetDataWriter stream)
         {
-
             try
             {
+                ReplicationSystemTransmission transmission = new ReplicationSystemTransmission();
+
                 // sort by state change and then priority once it exists 
                 // TODO: flow control
                 // how know if we overflow the buffer before hand or keep an index
@@ -153,15 +156,14 @@ namespace  Assets.Scripts
                     if (r.Status == ReplicationRecord.ReplicationSystemStatus.None)
                     {
                         Log.Debug("No status change");
-                        stream.Put((byte)0);
+                        stream.Put((byte) 0);
                     }
                     else
                     {
-                        stream.Put((byte)1);
+                        stream.Put((byte) 1);
                         if (r.Status == ReplicationRecord.ReplicationSystemStatus.Added)
                         {
-
-                            stream.Put((byte)1);
+                            stream.Put((byte) 1);
                             // Write persistent object id for obj
                             stream.Put(r.Entity.ObjectRep.Id);
                             Log.Debug($"Status: ADDED. Writing object rep id: {r.Entity.ObjectRep.Id}");
@@ -170,7 +172,7 @@ namespace  Assets.Scripts
                         {
                             Log.Debug("Status: REMOVED");
                             // removed
-                            stream.Put((byte)0);
+                            stream.Put((byte) 0);
                         }
                     }
 
@@ -181,7 +183,7 @@ namespace  Assets.Scripts
 
 
                     // Write state and status to transmission record
-                    ReplicatedObjectTransmissionRecord transmission = new ReplicatedObjectTransmissionRecord
+                    ReplicatedObjectTransmissionRecord tr = new ReplicatedObjectTransmissionRecord
                     {
                         StateMask = r.StateMask,
                         Status = r.Status,
@@ -189,22 +191,18 @@ namespace  Assets.Scripts
                     };
 
                     // This is the easiest way I could think of to reference the latest transmission 
-                    if (r.LastTransmission != null)
-                    {
-                        r.LastTransmission.NextTransmission = transmission;
-                    }
-                    r.LastTransmission = transmission;
+                    if (r.LastTransmission != null) r.LastTransmission.NextTransmission = tr;
+                    r.LastTransmission = tr;
 
-                    packetTransmissionRecord.ReplicationTransmissions.Add(transmission);
+                    transmission.Records.Add(tr);
 
                     // Clear masks
                     r.Status = ReplicationRecord.ReplicationSystemStatus.None;
                     r.StateMask = 0;
-
                 }
-                // Write 0 which isn't a valid id so the remote stream will know that's the end of the data
-                stream.Put((ushort)0);
 
+                // Write 0 which isn't a valid id so the remote stream will know that's the end of the data
+                stream.Put((ushort) 0);
             }
             catch (Exception e)
             {
@@ -213,6 +211,4 @@ namespace  Assets.Scripts
             }
         }
     }
-
 }
-

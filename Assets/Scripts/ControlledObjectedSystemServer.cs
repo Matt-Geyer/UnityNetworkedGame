@@ -8,7 +8,7 @@ namespace Assets.Scripts
         public override void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord record)
         {
             // Send id of last move that was received from client
-            stream.Put((ushort)SeqLastProcessed);
+            stream.Put((ushort) SeqLastProcessed);
 
             // Send new pco state
             CurrentlyControlledObject.Serialize(stream);
@@ -31,7 +31,7 @@ namespace Assets.Scripts
 
             // In a 0 packet loss scenario Input [1] was last sequence and input [2] is this sequence
             // but we will look further back, and if they are all new then apply all 3 moves        
-            ushort nextMoveSeq = (ushort)(SeqLastProcessed + 1);
+            ushort nextMoveSeq = (ushort) (SeqLastProcessed + 1);
             Debug.Log($"LastProcessedMoveSeq: {SeqLastProcessed} NextMove: {nextMoveSeq}");
             int i = 2;
             for (; i >= 0; i--)
@@ -39,8 +39,8 @@ namespace Assets.Scripts
                 Debug.Log($"_playerInputsToTransmit[{i}].seq: {PlayerInputsToTransmit[i].Seq}");
                 if (PlayerInputsToTransmit[i].Seq == nextMoveSeq) break;
             }
-
-
+            
+            // if nextMoveSeq isn't found then i will be -1
             i = i >= 0 ? i : 0;
 
             // This should always have at least one new move but up to 3

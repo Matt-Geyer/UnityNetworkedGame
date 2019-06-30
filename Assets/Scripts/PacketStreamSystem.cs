@@ -26,9 +26,11 @@ namespace Assets.Scripts
 
         // Information about sent packets stored in the order they were sent and expected to be processed in order
         private readonly Queue<PacketTransmissionRecord> _transmissionRecords;
-
-        // A PacketTransmissionRecord becomes a notification once we have determined if the packet it references was received or not
-        private readonly List<PacketTransmissionRecord> _transmissionNotifications;
+        
+        // Notifications are guaranteed to be delivered only once and in order so the other stream
+        // systems can just store their transmissions in queues and these bools will indicate whether
+        // the transmission was dropped or not (in theory!)
+        private readonly List<bool> _transmissionNotifications;
 
         // The NetPeer for the remote stream
         private readonly NetPeer _peer;
@@ -56,10 +58,10 @@ namespace Assets.Scripts
                 notificationReceivers ?? throw new ArgumentNullException(nameof(notificationReceivers));
             _log = NLogManager.Instance.GetLogger(this);
             _transmissionRecords = new Queue<PacketTransmissionRecord>();
-            _transmissionNotifications = new List<PacketTransmissionRecord>();
             DataReceivedEvents = new List<NetEvent>();
             _netWriter = new NetDataWriter(false, 1500);
             RemoteSeqAckFlag = new SeqAckFlag();
+            _transmissionNotifications = new List<bool>();
         }
 
         public void UpdateIncoming(bool host = false)
@@ -127,8 +129,7 @@ namespace Assets.Scripts
                             {
                                 PacketTransmissionRecord record = _transmissionRecords.Dequeue();
                                 SeqLastNotified = record.Seq;
-                                record.Received = false;
-                                _transmissionNotifications.Add(record);
+                                _transmissionNotifications.Add(false);
                                 _log.Debug($"Seq {record.Seq} was dropped");
                             }
                             // Notify based on sequences in flag
@@ -139,9 +140,8 @@ namespace Assets.Scripts
                             // NACK all packets up until the start of this ACK flag because they must have been lost or delivered out of order
                             while (SeqLastNotified != (byte)(_header.AckFlag.StartSeq - 1))
                             {
-                                PacketTransmissionRecord r = _transmissionRecords.Dequeue();
-                                r.Received = false;
-                                _transmissionNotifications.Add(r);
+                                _transmissionRecords.Dequeue();
+                                _transmissionNotifications.Add(false);
                                 SeqLastNotified = ++SeqLastNotified <= byte.MaxValue ? SeqLastNotified : 0;
                                 _log.Debug($"Sequence: {SeqLastNotified} was dropped");
                             }
@@ -170,30 +170,7 @@ namespace Assets.Scripts
                 _log.Debug($"SeqLastNotified - After: {SeqLastNotified}");
                 _log.Debug($"Generated {_transmissionNotifications.Count} transmission notifications");
                 _log.Debug($"There are now { _transmissionRecords.Count} remaining transmission records in the queue");
-
-                // Process notifications which should be in order
-                foreach (PacketTransmissionRecord record in _transmissionNotifications)
-                {
-                    _log.Debug($"Sequence {record.Seq} Received: {record.Received} ");
-
-                    // Nothing for packet stream to do with this record
-                    if (!record.Received) continue;
-
-                    // Drop the start of our current ack flag since we know that the remote stream
-                    // knows about the sequence that it represents
-                    // I think this covers all edge cases?
-                    if (record.AckFlag.SeqCount <= 0) continue;
-
-                    if (RemoteSeqAckFlag.StartSeq == record.AckFlag.EndSeq)
-                    {
-                        RemoteSeqAckFlag.DropStartSequence();
-                    }
-                    else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.StartSeq, record.AckFlag.EndSeq))
-                    {
-                        RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte)(record.AckFlag.EndSeq + 1));
-                    }
-                }
-
+                
                 // Give notifications to any stream writers that are interested in whether or not their transmissions made it
                 foreach (IPacketTransmissionNotificationReceiver notificationReceiver in _notificationReceivers)
                 {
@@ -209,6 +186,23 @@ namespace Assets.Scripts
             {
                 DataReceivedEvents.Clear();
                 _transmissionNotifications.Clear();
+            }
+        }
+
+        private void OnAckedTransmission(PacketTransmissionRecord record)
+        {
+            // Drop the start of our current ack flag since we know that the remote stream
+            // knows about the sequence that it represents
+            // I think this covers all edge cases?
+            if (record.AckFlag.SeqCount <= 0) return;
+
+            if (RemoteSeqAckFlag.StartSeq == record.AckFlag.EndSeq)
+            {
+                RemoteSeqAckFlag.DropStartSequence();
+            }
+            else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.StartSeq, record.AckFlag.EndSeq))
+            {
+                RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte) (record.AckFlag.EndSeq + 1));
             }
         }
 
@@ -233,7 +227,6 @@ namespace Assets.Scripts
             // Create a transmission record for the packet
             PacketTransmissionRecord record = new PacketTransmissionRecord
             {
-                Received = false,
                 Seq = _header.Seq,
                 AckFlag = RemoteSeqAckFlag
             };
@@ -244,7 +237,7 @@ namespace Assets.Scripts
             // let each stream manager write until the packet is full
             foreach (IPacketStreamWriter streamWriter in _streamWriters)
             {
-                streamWriter.WriteToPacketStream(_netWriter, record);
+                streamWriter.WriteToPacketStream(_netWriter);
             }
             
             // create output events
@@ -274,9 +267,10 @@ namespace Assets.Scripts
             // Notify based on the flag
             for (int seqBitPos = 0; seqBitPos < flag.SeqCount; seqBitPos++)
             {
-                PacketTransmissionRecord r = _transmissionRecords.Dequeue();
-                r.Received = flag.IsAck(seqBitPos);
-                _transmissionNotifications.Add(r);
+                PacketTransmissionRecord record = _transmissionRecords.Dequeue();
+                if (flag.IsAck(seqBitPos))
+                    OnAckedTransmission(record);
+                _transmissionNotifications.Add(flag.IsAck(seqBitPos));
                 SeqLastNotified = ++SeqLastNotified <= byte.MaxValue ? SeqLastNotified : 0;
             }
         }

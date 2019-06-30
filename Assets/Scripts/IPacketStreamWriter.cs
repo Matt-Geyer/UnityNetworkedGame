@@ -4,6 +4,6 @@ namespace Assets.Scripts
 {
     public interface IPacketStreamWriter
     {
-        void WriteToPacketStream(NetDataWriter stream, PacketTransmissionRecord transmissionRecord);
+        void WriteToPacketStream(NetDataWriter stream);
     }
 }

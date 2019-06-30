@@ -52,7 +52,7 @@ namespace Assets.Scripts
 
             Client.PacketStream.UpdateIncoming();
 
-            Client.PlayerControlledObjectSys.UpdateControlledObject();
+            Client.ControlledObjectSys.UpdateControlledObject();
 
             // Update game
             foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
@@ -106,7 +106,7 @@ namespace Assets.Scripts
             ControlledObject pco = new ControlledObject
                 {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>()};
 
-            Client.PlayerControlledObjectSys.CurrentlyControlledObject = pco;
+            Client.ControlledObjectSys.CurrentlyControlledObject = pco;
         }
 
         private enum State

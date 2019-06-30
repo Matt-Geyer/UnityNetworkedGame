@@ -16,7 +16,7 @@ namespace Assets.Scripts
 
         public readonly NetPeer Peer;
 
-        public readonly IControlledObjectSystem PlayerControlledObjectSys;
+        public readonly IControlledObjectSystem ControlledObjectSys;
 
         public readonly ReplicationSystem Replication;
 
@@ -38,23 +38,22 @@ namespace Assets.Scripts
             // the order they appear in this list so the stream has to be read in the same order it was written
             if (isServer)
             {
-                PlayerControlledObjectSys = new ControlledObjectedSystemServer();
+                ControlledObjectSys = new ControlledObjectedSystemServer();
 
-                // Write controlled object 
-                streamWriters.Add(PlayerControlledObjectSys);
-                streamWriters.Add(Replication);
+                streamWriters.Add(ControlledObjectSys); 
+                streamWriters.Add(Replication);           
 
-                streamReaders.Add(PlayerControlledObjectSys);
+                streamReaders.Add(ControlledObjectSys);
 
                 notificationReceivers.Add(Replication);
             }
             else
             {
-                PlayerControlledObjectSys = new ControlledObjectSystemClient();
+                ControlledObjectSys = new ControlledObjectSystemClient();
 
-                streamWriters.Add(PlayerControlledObjectSys);
+                streamWriters.Add(ControlledObjectSys);
 
-                streamReaders.Add(PlayerControlledObjectSys);
+                streamReaders.Add(ControlledObjectSys);
                 streamReaders.Add(Replication);
             }
 

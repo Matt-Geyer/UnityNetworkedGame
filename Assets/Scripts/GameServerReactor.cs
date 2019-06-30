@@ -148,7 +148,7 @@ namespace Assets.Scripts
 
             GameObject clientGameObj = Object.Instantiate(ClientPrefab);
 
-            client.PlayerControlledObjectSys.CurrentlyControlledObject = new ControlledObject
+            client.ControlledObjectSys.CurrentlyControlledObject = new ControlledObject
             {
                 Entity = clientGameObj,
                 PlayerController = clientGameObj.GetComponent<CharacterController>()

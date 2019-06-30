@@ -4,6 +4,6 @@ namespace Assets.Scripts
 {
     public interface IPacketTransmissionNotificationReceiver
     {
-        void ReceiveNotifications(List<PacketTransmissionRecord> notifications);
+        void ReceiveNotifications(List<bool> notifications);
     }
 }
