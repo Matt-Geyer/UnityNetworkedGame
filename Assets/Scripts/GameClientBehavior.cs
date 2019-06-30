@@ -1,34 +1,34 @@
-﻿using AiUnity.NLog.Core;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-[RequireComponent(typeof(UdpNetworkBehavior))]
-public class GameClientBehavior : MonoBehaviour
+namespace Assets.Scripts
 {
-    UdpNetworkBehavior Network;
-
-    public GameObject EntityPrefab;
-    public GameObject PlayerPrefab;
-
-    // Start is called before the first frame update
-    void Start()
+    [RequireComponent(typeof(UdpNetworkBehavior))]
+    public class GameClientBehavior : MonoBehaviour
     {
-        GameClientReactor reactor = new GameClientReactor
+        UdpNetworkBehavior Network;
+
+        public GameObject EntityPrefab;
+        public GameObject PlayerPrefab;
+
+        // Start is called before the first frame update
+        void Start()
         {
-            EntityPrefab = EntityPrefab,
-            PlayerPrefab = PlayerPrefab
-        };
-        Network = GetComponent<UdpNetworkBehavior>();
-        Network.R_GameReactor = reactor;
-        Network.ShouldBind = false;
-        Network.ShouldConnect = true;
-        Network.enabled = true;
-    }
+            GameClientReactor reactor = new GameClientReactor
+            {
+                EntityPrefab = EntityPrefab,
+                PlayerPrefab = PlayerPrefab
+            };
+            Network = GetComponent<UdpNetworkBehavior>();
+            Network.R_GameReactor = reactor;
+            Network.ShouldBind = false;
+            Network.ShouldConnect = true;
+            Network.enabled = true;
+        }
 
-    // Update is called once per frame
-    void Update()
-    {
+        // Update is called once per frame
+        void Update()
+        {
         
+        }
     }
 }

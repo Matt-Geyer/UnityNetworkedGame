@@ -11,6 +11,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Assets.Scripts;
 using UnityEngine;
 
 
@@ -246,7 +247,7 @@ public class UdpNetworkBehavior : MonoBehaviour
         //if (!ShouldBind)
         //{
         //    R_NetManager.SimulateLatency = true;
-            R_NetManager.SimulatePacketLoss = true;
+        //    R_NetManager.SimulatePacketLoss = true;
         //    R_NetManager.SimulationMaxLatency = 10;
         //    R_NetManager.SimulationMinLatency = 0;
         //}

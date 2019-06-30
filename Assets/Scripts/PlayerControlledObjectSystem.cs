@@ -3,299 +3,221 @@ using LiteNetLib.Utils;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PlayerControlledObject : IPersistentObject
+namespace Assets.Scripts
 {
-    public static PersistentObjectRep StaticObjectRep;
-
-    public GameObject Entity;
-    public CharacterController PlayerController;
-
-    public PersistentObjectRep ObjectRep
+    public sealed class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
     {
-        get => StaticObjectRep;
-        set => StaticObjectRep = value;
-    }
-
-    public virtual void ApplyInput(UserInputSample input)
-    {
-        PlayerController.Move(input.MoveDirection * 2f * (1f / 60f));
-    }
-
-    public void Deserialize(NetDataReader reader)
-    {
-        Entity.transform.SetPositionAndRotation(new Vector3(reader.GetFloat(), 0, reader.GetFloat()), new Quaternion());
-    }
-
-    public void Serialize(NetDataWriter writer)
-    {
-        writer.Put(Entity.transform.position.x);
-        writer.Put(Entity.transform.position.z);
-    }
-}
-
-
-public interface IPlayerControlledObjectSystem
-{
-    /// <summary>
-    /// Start replicating this player controlled object on the client
-    /// </summary>
-    /// <param name="pco"></param>
-    void StartReplicating(PlayerControlledObject pco);
-
-    /// <summary>
-    /// Stop replicating this player controlled object on the client
-    /// </summary>
-    /// <param name="pco"></param>
-    void StopReplicating(PlayerControlledObject pco);
-    
-    /// <summary>
-    ///  Called on the client to write data to be read by ProcessClientToServerStream 
-    /// </summary>
-    /// <param name="stream"></param>
-    void WriteClientToServerStream(NetDataWriter stream);
-
-    /// <summary>
-    ///  Called on the server to read and process data written by WriteClientToServerStream 
-    /// </summary>
-    /// <param name="stream"></param>
-    void ProcessClientToServerStream(NetDataReader stream);
-
-    /// <summary>
-    ///  Called on the server to write data to be read by ProcessServerToClientStream 
-    /// </summary>
-    /// <param name="stream"></param>
-    void WriteServerToClientStream(NetDataWriter stream);
-
-    /// <summary>
-    ///  Called on the client to read and process data written by WriteServerToClientStream 
-    /// </summary>
-    /// <param name="stream"></param>
-    void ProcessServerToClientStream(NetDataReader stream);
-
-    /// <summary>
-    /// Sample move, add to buffer, apply
-    /// </summary>
-    void UpdateControlledObject();
-
-    PlayerControlledObject ControlledObject { get; set; }
-        
-}
-
-
-
-public class PlayerControlledObjectSystem : IPlayerControlledObjectSystem
-{
-    class UserInputWindow
-    {
-        public UserInputSample[] Input;
-        public int First;
-        public int Last;
-        public int Count;
-        public int Max;
-        public ushort Seq;
-        public ushort UpperSeqWindow;
-        public IUserInputUtils Sampler;       
-
-    
-
-        public void Init(int max)
+        private class UserInputWindow
         {
-            Input = new UserInputSample[max];
-            for (int i = 0; i < max; i++)
+            public UserInputSample[] Input;
+            public int First;
+            public int Last;
+            public int Count;
+            public int Max;
+            public ushort Seq;
+            public ushort UpperSeqWindow;
+            public IUserInputUtils Sampler;
+
+            public void Init(int max)
             {
-                Input[i] = new UserInputSample();
-            }
-            First = Last = 0;
-            Count = 0;
-            Max = max;
-            UpperSeqWindow = (ushort)(ushort.MaxValue - Max);
-        }
-
-        public int SampleUserInput()
-        {
-            if (Count == Max) return -1;
-            int sampleIndex = Last;
-            Sampler.Sample(Input[sampleIndex]);
-            Input[sampleIndex].Seq = Seq;
-            Last = ++Last < Max ? Last : 0;
-            Count++;
-            Seq++;
-            return sampleIndex;
-        }
-
-        public void AckSeq(ushort Seq)
-        {
-            // if seq > and inside window 
-            // 223 is byte.MaxValue - 32
-            ushort FirstSeq = Input[First].Seq;
-
-            if  (FirstSeq == Seq ||
-                (Seq > FirstSeq && (Seq - FirstSeq <= Max)) ||
-                (Seq < FirstSeq && (FirstSeq > UpperSeqWindow && Seq < (ushort)(Max - (ushort.MaxValue - FirstSeq)))))
-            {
-                // drop moves off the front of the window until the window starts at Seq + 1 or count = 0
-                int targetSeq = Seq + 1;
-                while (Count > 0 && Input[First].Seq != targetSeq)
+                Input = new UserInputSample[max];
+                for (int i = 0; i < max; i++)
                 {
-                    First = ++First < Max ? First : 0;
-                    Count--;
+                    Input[i] = new UserInputSample();
+                }
+                First = Last = 0;
+                Count = 0;
+                Max = max;
+                UpperSeqWindow = (ushort)(ushort.MaxValue - Max);
+            }
+
+            public int SampleUserInput()
+            {
+                if (Count == Max) return -1;
+                int sampleIndex = Last;
+                Sampler.Sample(Input[sampleIndex]);
+                Input[sampleIndex].Seq = Seq;
+                Last = ++Last < Max ? Last : 0;
+                Count++;
+                Seq++;
+                return sampleIndex;
+            }
+
+            public void AckSeq(ushort seq)
+            {
+                // if seq > and inside window 
+                // 223 is byte.MaxValue - 32
+                ushort firstSeq = Input[First].Seq;
+
+                if (firstSeq == seq ||
+                    seq > firstSeq && seq - firstSeq <= Max ||
+                    seq < firstSeq && firstSeq > UpperSeqWindow && seq < (ushort) (Max - (ushort.MaxValue - firstSeq)))
+                {
+                    // drop moves off the front of the window until the window starts at seq + 1 or count = 0
+                    int targetSeq = seq + 1;
+                    while (Count > 0 && Input[First].Seq != targetSeq)
+                    {
+                        First = ++First < Max ? First : 0;
+                        Count--;
+                    }
                 }
             }
         }
-    }
 
-    private UserInputWindow PlayerInputWindow;
+        private readonly UserInputWindow _playerInputWindow;
 
-    private List<UserInputSample> PlayerInputsToTransmit;
+        private readonly List<UserInputSample> _playerInputsToTransmit;
 
-    public ushort Seq;
+        private ushort _seq;
 
-    public int Seq_LastProcessed = -1;
+        private int _seqLastProcessed = -1;
 
-    public PlayerControlledObject ControlledObject { get; set; }
+        public PlayerControlledObject ControlledObject { get; set; }
 
-    private readonly NLogger Log;
+        private readonly NLogger _log;
 
-    public PlayerControlledObjectSystem()
-    {
-        Log = NLogManager.Instance.GetLogger(this);
-
-        PlayerInputWindow = new UserInputWindow
+        public PlayerControlledObjectSystem()
         {
-            Sampler = new UserInputUtils()
+            _log = NLogManager.Instance.GetLogger(this);
+
+            _playerInputWindow = new UserInputWindow
+            {
+                Sampler = new UserInputUtils()
+            };
+
+            _playerInputWindow.Init(360);
+
+            // Since we are always going to transmit the last 3 moves I figured this
+            // was a simple way to simplify the transmit logic to not have to check if there are at least 3 
+            for (int i = 0; i < 3; i++)
+                _playerInputWindow.SampleUserInput();
+
+            _playerInputsToTransmit = new List<UserInputSample>(3)
+        {
+            _playerInputWindow.Input[0],
+            _playerInputWindow.Input[1],
+            _playerInputWindow.Input[2]
         };
-
-        PlayerInputWindow.Init(360);
-
-        // Since we are always going to transmit the last 3 moves I figured this
-        // was a simple way to simplify the transmit logic to not have to check if thare are at least 3 
-        for (int i = 0; i < 3; i++)
-            PlayerInputWindow.SampleUserInput();
-
-        PlayerInputsToTransmit = new List<UserInputSample>(3)
-        {
-            PlayerInputWindow.Input[0],
-            PlayerInputWindow.Input[1],
-            PlayerInputWindow.Input[2]
-        };
-    }
-
-
-    public void StartReplicating(PlayerControlledObject pco)
-    {
-        // start replicating this object which is controlled by a player (not the player who will be receiving this state tho)
-    }
-
-    public void StopReplicating(PlayerControlledObject pco)
-    {
-        // stop replicating a pco
-    }
-
-    public void WriteClientToServerStream(NetDataWriter stream)
-    {
-        // write players last 3 moves to stream
-        PlayerInputsToTransmit[0].Serialize(stream);
-        PlayerInputsToTransmit[1].Serialize(stream);
-        PlayerInputsToTransmit[2].Serialize(stream);
-
-        Log.Debug($"PlayerInputsToTransmit[0].Seq:{ PlayerInputsToTransmit[0].Seq}");
-        Log.Debug($"PlayerInputsToTransmit[1].Seq:{ PlayerInputsToTransmit[1].Seq}");
-        Log.Debug($"PlayerInputsToTransmit[2].Seq:{ PlayerInputsToTransmit[2].Seq}");
-
-    }
-
-    public void WriteServerToClientStream(NetDataWriter stream)
-    {
-        // Send id of last move that was received from client
-        stream.Put((ushort)Seq_LastProcessed);
-
-        // Send new pco state
-        ControlledObject.Serialize(stream);
-
-        // Send state of all pco that are being replicated by this system
-    }
-
-    public void ProcessClientToServerStream(NetDataReader stream)
-    {
-        // The players last 3 moves are always transmitted with the last move being the most recent
-        PlayerInputsToTransmit[0].Deserialize(stream);
-        PlayerInputsToTransmit[1].Deserialize(stream);
-        PlayerInputsToTransmit[2].Deserialize(stream);
-
-        Debug.Log("Read client inputs: ");
-        Debug.Log($"Seq: {PlayerInputsToTransmit[0].Seq} Move:{PlayerInputsToTransmit[0].MoveDirection}");
-        Debug.Log($"Seq: {PlayerInputsToTransmit[1].Seq} Move:{PlayerInputsToTransmit[1].MoveDirection}");
-        Debug.Log($"Seq: {PlayerInputsToTransmit[2].Seq} Move:{PlayerInputsToTransmit[2].MoveDirection}");
-
-
-        // In a 0 packet loss scenario Input [1] was last sequence and input [2] is this sequence
-        // but we will look further back, and if they are all new then apply all 3 moves        
-        ushort nextMoveSeq = (ushort)(Seq_LastProcessed + 1);
-        Debug.Log($"LastProcessedMoveSeq: {Seq_LastProcessed} NextMove: {nextMoveSeq}");
-        int i = 2;
-        for (; i >= 0; i--)
-        {
-            Debug.Log($"PlayerInputsToTransmit[{i}].Seq: {PlayerInputsToTransmit[i].Seq}");
-            if (PlayerInputsToTransmit[i].Seq == nextMoveSeq) break;
         }
 
 
-        i = i >= 0 ? i : 0;
-
-        // This should always have at least one new move but up to 3
-        for (int j = i; j <= 2; j++)
+        public void StartReplicating(PlayerControlledObject pco)
         {
-            Debug.Log($"Looking at PlayerInputsToTransmit[{j}]");
-            ControlledObject.ApplyInput(PlayerInputsToTransmit[j]);
-            Seq_LastProcessed = PlayerInputsToTransmit[j].Seq;
-            Debug.Log($"Applied PlayerInputsToTransmit[{j}] with Seq: {PlayerInputsToTransmit[j].Seq}");
-        }
-    }
-
-    public void ProcessServerToClientStream(NetDataReader stream)
-    {
-        // read id of last processed move and use it to update
-        // the buffer of stored moves
-        Seq_LastProcessed = stream.GetUShort();
-        Log.Debug($"Seq_LastProcessed from server: {Seq_LastProcessed}");
-
-        
-        PlayerInputWindow.AckSeq((ushort)Seq_LastProcessed);
-
-        Log.Debug($"Updated PlayerInputWindow");
-
-        // read state of player obj and set it using remainder of moves in buffer to predict again
-        ControlledObject.Deserialize(stream);
-
-        Log.Debug($"Read controlled object state");
-
-
-        // read state of all replicated pco and predict
-        for (int i = 0; i < PlayerInputWindow.Count; i++)
-        {
-            ControlledObject.ApplyInput(PlayerInputWindow.Input[PlayerInputWindow.First + i]);
+            // start replicating this object which is controlled by a player (not the player who will be receiving this state tho)
         }
 
-        Log.Debug($"Finished applying un-acked moves");
-    }
-
-    public void UpdateControlledObject()
-    {
-        // sample move
-        int nextSampleIndex = PlayerInputWindow.SampleUserInput();
-
-    
-
-        if (nextSampleIndex >= 0)
+        public void StopReplicating(PlayerControlledObject pco)
         {
-            Log.Debug($"Current Sample - PlayerInputWindow[{nextSampleIndex}] Seq: {PlayerInputWindow.Input[nextSampleIndex].Seq} Move: {PlayerInputWindow.Input[nextSampleIndex].MoveDirection}");
+            // stop replicating a pco
+        }
 
-            // apply move 
-            ControlledObject.ApplyInput(PlayerInputWindow.Input[nextSampleIndex]);
+        public void WriteClientToServerStream(NetDataWriter stream)
+        {
+            // write players last 3 moves to stream
+            _playerInputsToTransmit[0].Serialize(stream);
+            _playerInputsToTransmit[1].Serialize(stream);
+            _playerInputsToTransmit[2].Serialize(stream);
 
-            // Update packets to transmit 
-            PlayerInputsToTransmit.RemoveAt(0);
-            PlayerInputsToTransmit.Add(PlayerInputWindow.Input[nextSampleIndex]);
+            _log.Debug($"_playerInputsToTransmit[0].seq:{ _playerInputsToTransmit[0].Seq}");
+            _log.Debug($"_playerInputsToTransmit[1].seq:{ _playerInputsToTransmit[1].Seq}");
+            _log.Debug($"_playerInputsToTransmit[2].seq:{ _playerInputsToTransmit[2].Seq}");
+
+        }
+
+        public void WriteServerToClientStream(NetDataWriter stream)
+        {
+            // Send id of last move that was received from client
+            stream.Put((ushort)_seqLastProcessed);
+
+            // Send new pco state
+            ControlledObject.Serialize(stream);
+
+            // Send state of all pco that are being replicated by this system
+        }
+
+        public void ProcessClientToServerStream(NetDataReader stream)
+        {
+            // The players last 3 moves are always transmitted with the last move being the most recent
+            _playerInputsToTransmit[0].Deserialize(stream);
+            _playerInputsToTransmit[1].Deserialize(stream);
+            _playerInputsToTransmit[2].Deserialize(stream);
+
+            Debug.Log("Read client inputs: ");
+            Debug.Log($"seq: {_playerInputsToTransmit[0].Seq} Move:{_playerInputsToTransmit[0].MoveDirection}");
+            Debug.Log($"seq: {_playerInputsToTransmit[1].Seq} Move:{_playerInputsToTransmit[1].MoveDirection}");
+            Debug.Log($"seq: {_playerInputsToTransmit[2].Seq} Move:{_playerInputsToTransmit[2].MoveDirection}");
+
+
+            // In a 0 packet loss scenario Input [1] was last sequence and input [2] is this sequence
+            // but we will look further back, and if they are all new then apply all 3 moves        
+            ushort nextMoveSeq = (ushort)(_seqLastProcessed + 1);
+            Debug.Log($"LastProcessedMoveSeq: {_seqLastProcessed} NextMove: {nextMoveSeq}");
+            int i = 2;
+            for (; i >= 0; i--)
+            {
+                Debug.Log($"_playerInputsToTransmit[{i}].seq: {_playerInputsToTransmit[i].Seq}");
+                if (_playerInputsToTransmit[i].Seq == nextMoveSeq) break;
+            }
+
+
+            i = i >= 0 ? i : 0;
+
+            // This should always have at least one new move but up to 3
+            for (int j = i; j <= 2; j++)
+            {
+                Debug.Log($"Looking at _playerInputsToTransmit[{j}]");
+                ControlledObject.ApplyInput(_playerInputsToTransmit[j]);
+                _seqLastProcessed = _playerInputsToTransmit[j].Seq;
+                Debug.Log($"Applied _playerInputsToTransmit[{j}] with seq: {_playerInputsToTransmit[j].Seq}");
+            }
+        }
+
+        public void ProcessServerToClientStream(NetDataReader stream)
+        {
+            // read id of last processed move and use it to update
+            // the buffer of stored moves
+            _seqLastProcessed = stream.GetUShort();
+            _log.Debug($"_seqLastProcessed from server: {_seqLastProcessed}");
+
+
+            _playerInputWindow.AckSeq((ushort)_seqLastProcessed);
+
+            _log.Debug($"Updated _playerInputWindow");
+
+            // read state of player obj and set it using remainder of moves in buffer to predict again
+            ControlledObject.Deserialize(stream);
+
+            _log.Debug($"Read controlled object state");
+
+
+            // read state of all replicated pco and predict
+            for (int i = 0; i < _playerInputWindow.Count; i++)
+            {
+                ControlledObject.ApplyInput(_playerInputWindow.Input[_playerInputWindow.First + i]);
+            }
+
+            _log.Debug($"Finished applying un-acked moves");
+        }
+
+        public void UpdateControlledObject()
+        {
+            // sample move
+            int nextSampleIndex = _playerInputWindow.SampleUserInput();
+
+
+
+            if (nextSampleIndex >= 0)
+            {
+                _log.Debug($"Current Sample - _playerInputWindow[{nextSampleIndex}] seq: {_playerInputWindow.Input[nextSampleIndex].Seq} Move: {_playerInputWindow.Input[nextSampleIndex].MoveDirection}");
+
+                // apply move 
+                ControlledObject.ApplyInput(_playerInputWindow.Input[nextSampleIndex]);
+
+                // Update packets to transmit 
+                _playerInputsToTransmit.RemoveAt(0);
+                _playerInputsToTransmit.Add(_playerInputWindow.Input[nextSampleIndex]);
+            }
         }
     }
 }
+
