@@ -33,6 +33,7 @@ namespace Assets.Scripts
             SeqLastProcessed = stream.GetUShort();
             _log.Debug($"SeqLastProcessed from server: {SeqLastProcessed}");
             
+
             _window.AckSeq((ushort)SeqLastProcessed);
 
             _log.Debug("Updated InputWindow");
@@ -75,15 +76,20 @@ namespace Assets.Scripts
             // sample move
             UserInputSample nextSample = _window.GetNextAvailable();
 
-            if (nextSample == null) return;
+            if (nextSample == null)
+            {
+                _log.Debug("User input window was full so stopped sampling input");
+                return;
+            }
 
             nextSample.UpdateFromCurrentInput();
 
-            _log.Debug($"UserInputSample - seq: {nextSample.Seq} Move: {nextSample.MoveDirection}");
+            _log.Debug($"Sampled next move: {nextSample}");
 
             // apply move 
+            _log.Debug($"Object position before move: {CurrentlyControlledObject.Entity.transform.position}");
             CurrentlyControlledObject.ApplyInput(nextSample);
-
+            _log.Debug($"Object position after move: {CurrentlyControlledObject.Entity.transform.position}");
             // Update packets to transmit 
             _playerInputsToTransmit.RemoveAt(0);
             _playerInputsToTransmit.Add(nextSample);

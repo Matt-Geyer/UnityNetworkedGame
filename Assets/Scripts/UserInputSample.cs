@@ -49,5 +49,10 @@ namespace Assets.Scripts
             //    Pressed[i] = reader.GetUShort();
             //}
         }
+
+        public override string ToString()
+        {
+            return $"Seq: {Seq} Move: {MoveDirection.ToString()}";
+        }
     }
 }

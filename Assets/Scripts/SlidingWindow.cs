@@ -53,5 +53,14 @@ namespace Assets.Scripts
                 Count--;
             }
         }
+
+        public override string ToString()
+        {
+            string str = $"Count: {Count} First Index: {First} Last Index: {Last} ";
+            if (Count <= 0) return str;
+            int last = Last - 1 < 0 ? Max - 1 : Last - 1;
+            str += $"First Seq: {Items[First].Seq} Last Seq: {Items[last].Seq}";
+            return str;
+        }
     }
 }

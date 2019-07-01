@@ -23,13 +23,16 @@ namespace Assets.Scripts
 
         public void Deserialize(NetDataReader reader)
         {
-            Entity.transform.SetPositionAndRotation(new Vector3(reader.GetFloat(), 0, reader.GetFloat()), new Quaternion());
+            Vector3 pos = new Vector3(reader.GetFloat(), 0, reader.GetFloat());
+            Debug.Log($"READ POS: {pos}");
+            Entity.transform.SetPositionAndRotation(pos, new Quaternion());
         }
 
         public void Serialize(NetDataWriter writer)
         {
             writer.Put(Entity.transform.position.x);
             writer.Put(Entity.transform.position.z);
+            Debug.Log($"WROTE POS: {Entity.transform.position}");
         }
     }
 }

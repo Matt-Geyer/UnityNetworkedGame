@@ -63,9 +63,11 @@ namespace Assets.Scripts
             for (int j = i; j <= 2; j++)
             {
                 _log.Debug($"Looking at _playerInputsToTransmit[{j}]");
+                _log.Debug($"Applying input with sequence: {_receivedPlayerInputs[j].Seq} to controlled object");
+                _log.Debug($"Object position before: {CurrentlyControlledObject.Entity.transform.position}");
                 CurrentlyControlledObject.ApplyInput(_receivedPlayerInputs[j]);
+                _log.Debug($"Object position after: {CurrentlyControlledObject.Entity.transform.position}");
                 SeqLastProcessed = _receivedPlayerInputs[j].Seq;
-                _log.Debug($"Applied _playerInputsToTransmit[{j}] with seq: {_receivedPlayerInputs[j].Seq}");
             }
         }
     }
