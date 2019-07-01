@@ -3,10 +3,8 @@ using UnityEngine;
 
 namespace Assets.Scripts
 {
-    public class UserInputSample
+    public class UserInputSample : SeqBase
     {
-        public ushort Seq;
-
         public Vector3 MoveDirection;
 
         public ushort PressedCount;
@@ -16,6 +14,13 @@ namespace Assets.Scripts
         public UserInputSample()
         {
             MoveDirection = new Vector3();
+        }
+
+        public void UpdateFromCurrentInput()
+        {
+            MoveDirection.x = Input.GetAxis("Horizontal");
+            MoveDirection.z = Input.GetAxis("Vertical");
+            MoveDirection.y = 0;
         }
 
         public void Serialize(NetDataWriter writer)

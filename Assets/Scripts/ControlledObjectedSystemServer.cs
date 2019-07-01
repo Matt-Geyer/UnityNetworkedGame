@@ -1,12 +1,29 @@
-﻿using LiteNetLib.Utils;
-using UnityEngine;
+﻿using AiUnity.NLog.Core;
+using LiteNetLib.Utils;
 
 namespace Assets.Scripts
 {
     public sealed class ControlledObjectedSystemServer : ControlledObjectSystemBase
     {
+        private readonly NLogger _log;
+
+        private readonly UserInputSample[] _receivedPlayerInputs;
+
+        public ControlledObjectedSystemServer()
+        {
+            _log = NLogManager.Instance.GetLogger(this);
+            _receivedPlayerInputs = new UserInputSample[3]
+            {
+                new UserInputSample(),
+                new UserInputSample(),
+                new UserInputSample()
+            };
+        }
+
         public override void WriteToPacketStream(NetDataWriter stream)
         {
+            _log.Debug($"SeqLastProcessed: {SeqLastProcessed}");
+
             // Send id of last move that was received from client
             stream.Put((ushort) SeqLastProcessed);
 
@@ -19,37 +36,36 @@ namespace Assets.Scripts
         public override void ReadPacketStream(NetDataReader stream)
         {
             // The players last 3 moves are always transmitted with the last move being the most recent
-            PlayerInputsToTransmit[0].Deserialize(stream);
-            PlayerInputsToTransmit[1].Deserialize(stream);
-            PlayerInputsToTransmit[2].Deserialize(stream);
+            _receivedPlayerInputs[0].Deserialize(stream);
+            _receivedPlayerInputs[1].Deserialize(stream);
+            _receivedPlayerInputs[2].Deserialize(stream);
 
-            Debug.Log("Read client inputs: ");
-            Debug.Log($"seq: {PlayerInputsToTransmit[0].Seq} Move:{PlayerInputsToTransmit[0].MoveDirection}");
-            Debug.Log($"seq: {PlayerInputsToTransmit[1].Seq} Move:{PlayerInputsToTransmit[1].MoveDirection}");
-            Debug.Log($"seq: {PlayerInputsToTransmit[2].Seq} Move:{PlayerInputsToTransmit[2].MoveDirection}");
+            _log.Debug("Read client inputs: \n " +
+                       $"Seq: {_receivedPlayerInputs[0].Seq} Move:{_receivedPlayerInputs[0].MoveDirection}\n" +
+                       $"Seq: {_receivedPlayerInputs[1].Seq} Move:{_receivedPlayerInputs[1].MoveDirection}\n" +
+                       $"Seq: {_receivedPlayerInputs[2].Seq} Move:{_receivedPlayerInputs[2].MoveDirection}\n");
 
-
-            // In a 0 packet loss scenario Input [1] was last sequence and input [2] is this sequence
+            // In a 0 packet loss scenario Items [1] was last sequence and input [2] is this sequence
             // but we will look further back, and if they are all new then apply all 3 moves        
             ushort nextMoveSeq = (ushort) (SeqLastProcessed + 1);
-            Debug.Log($"LastProcessedMoveSeq: {SeqLastProcessed} NextMove: {nextMoveSeq}");
+            _log.Debug($"LastProcessedMoveSeq: {SeqLastProcessed} NextMove: {nextMoveSeq}");
             int i = 2;
             for (; i >= 0; i--)
             {
-                Debug.Log($"_playerInputsToTransmit[{i}].seq: {PlayerInputsToTransmit[i].Seq}");
-                if (PlayerInputsToTransmit[i].Seq == nextMoveSeq) break;
+                _log.Debug($"_playerInputsToTransmit[{i}].seq: {_receivedPlayerInputs[i].Seq}");
+                if (_receivedPlayerInputs[i].Seq == nextMoveSeq) break;
             }
-            
+
             // if nextMoveSeq isn't found then i will be -1
             i = i >= 0 ? i : 0;
 
             // This should always have at least one new move but up to 3
             for (int j = i; j <= 2; j++)
             {
-                Debug.Log($"Looking at _playerInputsToTransmit[{j}]");
-                CurrentlyControlledObject.ApplyInput(PlayerInputsToTransmit[j]);
-                SeqLastProcessed = PlayerInputsToTransmit[j].Seq;
-                Debug.Log($"Applied _playerInputsToTransmit[{j}] with seq: {PlayerInputsToTransmit[j].Seq}");
+                _log.Debug($"Looking at _playerInputsToTransmit[{j}]");
+                CurrentlyControlledObject.ApplyInput(_receivedPlayerInputs[j]);
+                SeqLastProcessed = _receivedPlayerInputs[j].Seq;
+                _log.Debug($"Applied _playerInputsToTransmit[{j}] with seq: {_receivedPlayerInputs[j].Seq}");
             }
         }
     }

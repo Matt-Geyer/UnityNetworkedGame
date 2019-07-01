@@ -1,0 +1,7 @@
+﻿{
+    "name": "Tests",
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+    "references": ["UnityNetworkedGame"]
+}

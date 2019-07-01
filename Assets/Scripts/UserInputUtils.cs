@@ -32,7 +32,7 @@ namespace Assets.Scripts
             //int len = CheckKeys.Length;
             //for (int i = 0; i < len; i++)
             //{
-            //    if (Input.GetKey(CheckKeys[i]))
+            //    if (Items.GetKey(CheckKeys[i]))
             //    {
             //        sample.Pressed[sample.PressedCount++] = CheckKeysUshort[i];
             //    }
