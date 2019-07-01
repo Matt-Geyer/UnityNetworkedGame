@@ -69,6 +69,15 @@ namespace Assets.Scripts
 
             Clients_UpdateIncomingPacketStream();
 
+            foreach (GameClient client in Clients.Values)
+            {
+                GameObject player = client.ControlledObjectSys.CurrentlyControlledObject.Entity;
+
+                Vector3 pos = new Vector3(player.transform.position.x, 0, player.transform.position.z);
+
+                player.transform.SetPositionAndRotation(pos, player.transform.rotation);
+            }
+
             // update game
             for (int i = 0; i < 10; i++)
             {

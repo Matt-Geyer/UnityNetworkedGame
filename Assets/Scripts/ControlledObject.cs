@@ -23,7 +23,7 @@ namespace Assets.Scripts
 
         public void Deserialize(NetDataReader reader)
         {
-            Vector3 pos = new Vector3(reader.GetFloat(), 0, reader.GetFloat());
+            Vector3 pos = new Vector3(reader.GetFloat(), 0.0001f, reader.GetFloat());
             Debug.Log($"READ POS: {pos}");
             Entity.transform.SetPositionAndRotation(pos, new Quaternion());
         }

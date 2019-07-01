@@ -39,7 +39,9 @@ namespace Assets.Scripts
             _log.Debug("Updated InputWindow");
 
             // read state of player obj and set it using remainder of moves in buffer to predict again
+            _log.Debug($"Player position before {CurrentlyControlledObject.Entity.transform.position}");
             CurrentlyControlledObject.Deserialize(stream);
+            _log.Debug($"Player position after {CurrentlyControlledObject.Entity.transform.position}");
 
             _log.Debug("Read controlled object state");
 
@@ -48,7 +50,9 @@ namespace Assets.Scripts
             int i = _window.First;
             while (i != _window.Last)
             {
-                CurrentlyControlledObject.ApplyInput(_window.Items[i]);
+                //_log.Debug($"Player position before {CurrentlyControlledObject.Entity.transform.position}");
+                //CurrentlyControlledObject.ApplyInput(_window.Items[i]);
+                //_log.Debug($"Player position after {CurrentlyControlledObject.Entity.transform.position}");
                 i = ++i < _window.Max ? i : 0;
             }
 
