@@ -93,7 +93,7 @@ namespace Assets.Scripts
                         // No sequences in the flag so just initialize it with this sequence being ACKed
                         RemoteSeqAckFlag.InitWithAckedSequence(_header.Seq);
                     }
-                    else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.EndSeq, _header.Seq))
+                    else if (SequenceHelper.SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.EndSeq, _header.Seq))
                     {
                         _log.Debug($"Received sequence {_header.Seq} is ahead of the last sequence in our ack flag: {RemoteSeqAckFlag.EndSeq}");
 
@@ -135,7 +135,7 @@ namespace Assets.Scripts
                             // Notify based on sequences in flag
                             GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(_header.AckFlag);
                         }
-                        else if (SeqIsAheadButInsideWindow32((byte)SeqLastNotified, _header.AckFlag.StartSeq))
+                        else if (SequenceHelper.SeqIsAheadButInsideWindow32((byte)SeqLastNotified, _header.AckFlag.StartSeq))
                         {
                             // NACK all packets up until the start of this ACK flag because they must have been lost or delivered out of order
                             while (SeqLastNotified != (byte)(_header.AckFlag.StartSeq - 1))
@@ -148,7 +148,7 @@ namespace Assets.Scripts
                             // Notify based on sequences in flag
                             GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(_header.AckFlag);
                         }
-                        else if (SeqIsInsideRangeInclusive(_header.AckFlag.StartSeq, _header.AckFlag.EndSeq, (byte)SeqLastNotified))
+                        else if (SequenceHelper.SeqIsInsideRangeInclusive(_header.AckFlag.StartSeq, _header.AckFlag.EndSeq, (byte)SeqLastNotified))
                         {
                             _log.Debug($"{SeqLastNotified} is inside ack flag range");
                             // Drop sequences we have already notified                                            
@@ -200,7 +200,7 @@ namespace Assets.Scripts
             {
                 RemoteSeqAckFlag.DropStartSequence();
             }
-            else if (SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.StartSeq, record.AckFlag.EndSeq))
+            else if (SequenceHelper.SeqIsAheadButInsideWindow32(RemoteSeqAckFlag.StartSeq, record.AckFlag.EndSeq))
             {
                 RemoteSeqAckFlag.DropStartSequenceUntilItEquals((byte) (record.AckFlag.EndSeq + 1));
             }
@@ -275,35 +275,9 @@ namespace Assets.Scripts
             }
         }
 
-        public static bool SeqIsAheadButInsideWindow32(byte current, byte check)
-        {
-            // 223 is byte.MaxValue - 32
-            return ((check > current && (check - current <= 32)) ||
-                    (check < current && (current > 223 && check < (byte)(32 - (byte.MaxValue - current)))));
-        }
-
-        public static bool SeqIsEqualOrAheadButInsideWindow32(byte current, byte check)
-        {
-            // 223 is byte.MaxValue - 32
-            return (current == check ||
-                   (check > current && (check - current <= 32)) ||
-                   (check < current && (current > 223 && check < (byte)(32 - (byte.MaxValue - current)))));
-        }
-
-        public static bool SeqIsInsideRangeInclusive(byte start, byte end, byte check)
-        {
-            return SeqIsEqualOrAheadButInsideWindow32(check, end) && SeqIsEqualOrAheadButInsideWindow32(start, check);
-        }
-
 
         // assumed that start and end are valid in terms of their distance from each other
         // being at most 32 and start being < end in terms of a sequence timeline
-        public static bool SeqIsInsideRange(byte start, byte end, byte check)
-        {
-            // if the end of the range is ahead of the check value, and the check value is ahead of the start of the range
-            // then the check value must be inside of the range
-            return SeqIsAheadButInsideWindow32(check, end) && SeqIsAheadButInsideWindow32(start, check);
-        }
     }
 }
 

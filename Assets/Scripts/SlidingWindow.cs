@@ -2,11 +2,6 @@
 
 namespace Assets.Scripts
 {
-    public abstract class SeqBase
-    {
-        public virtual ushort Seq { get; set; }
-    }
-
     public class SlidingWindow<T> where T : SeqBase
     {
         public int Count;
@@ -40,13 +35,15 @@ namespace Assets.Scripts
 
         public void AckSeq(ushort seq)
         {
-            // if seq > and inside window 
-            // 223 is byte.MaxValue - 32
-            ushort firstSeq = Items[First].Seq;
+            if (Count == 0) return;
 
-            if (firstSeq != seq && (seq <= firstSeq || seq - firstSeq > Max) &&
-                (seq >= firstSeq || firstSeq <= UpperSeqWindow ||
-                 seq >= (ushort)(Max - (ushort.MaxValue - firstSeq)))) return;
+            int lastInd = Last - 1 >= 0 ? Last - 1 : Max - 1;
+
+            ushort firstSeq = Items[First].Seq;
+            ushort lastSeq = Items[lastInd].Seq;
+
+            // If the seq isn't inside the range of our window then we don't care about it
+            if (!SequenceHelper.SeqIsInsideRangeInclusive(firstSeq, lastSeq, seq, Max)) return;
 
             // drop moves off the front of the window until the window starts at seq + 1 or count = 0
             int targetSeq = seq + 1;

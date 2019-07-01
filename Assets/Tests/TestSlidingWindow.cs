@@ -74,15 +74,13 @@ namespace Assets.Tests
             window.GetNextAvailable();
             seqItem = window.GetNextAvailable();
 
+
             Assert.AreEqual(4, window.Count);
             Assert.AreEqual(5, seqItem.Seq);
 
             window.AckSeq(seqItem.Seq);
 
             Assert.AreEqual(0, window.Count);
-            
-
-
         }
     }
 }

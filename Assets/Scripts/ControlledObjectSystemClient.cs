@@ -15,8 +15,15 @@ namespace Assets.Scripts
         public ControlledObjectSystemClient()
         {
             _log = NLogManager.Instance.GetLogger(this);
-            _playerInputsToTransmit = new List<UserInputSample>();
+            
             _window = new SlidingWindow<UserInputSample>(360, () => new UserInputSample());
+
+            _playerInputsToTransmit = new List<UserInputSample>
+            {
+                _window.GetNextAvailable(),
+                _window.GetNextAvailable(),
+                _window.GetNextAvailable()
+            };
         }
 
         public override void ReadPacketStream(NetDataReader stream)
@@ -35,9 +42,17 @@ namespace Assets.Scripts
 
             _log.Debug("Read controlled object state");
 
+            if (_window.Count == 0) return;
+
+            int i = _window.First;
+            while (i != _window.Last)
+            {
+                CurrentlyControlledObject.ApplyInput(_window.Items[i]);
+                i = ++i < _window.Max ? i : 0;
+            }
 
             // read state of all replicated pco and predict
-            //for (int i = 0; i < InputWindow.Count; i++)
+            //for (int i = 0; i < _window.Count; i++)
             //    CurrentlyControlledObject.ApplyInput(InputWindow.Items[InputWindow.First + i]);
 
             _log.Debug("Finished applying un-acked moves");
@@ -61,6 +76,8 @@ namespace Assets.Scripts
             UserInputSample nextSample = _window.GetNextAvailable();
 
             if (nextSample == null) return;
+
+            nextSample.UpdateFromCurrentInput();
 
             _log.Debug($"UserInputSample - seq: {nextSample.Seq} Move: {nextSample.MoveDirection}");
 

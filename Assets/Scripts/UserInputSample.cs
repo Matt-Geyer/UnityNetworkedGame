@@ -26,7 +26,6 @@ namespace Assets.Scripts
         public void Serialize(NetDataWriter writer)
         {
             writer.Put(Seq);
-            Debug.Log($"WROTE USER INPUT SEQ: {Seq} TO STREAM");
             // No movement in Y dir
             writer.Put(MoveDirection.x);
             writer.Put(MoveDirection.z);
@@ -41,7 +40,6 @@ namespace Assets.Scripts
         public void Deserialize(NetDataReader reader)
         {
             Seq = reader.GetUShort();
-            Debug.Log($"READ INPUT SEQ: {Seq} FROM STREAM");
             MoveDirection.x = reader.GetFloat();
             MoveDirection.z = reader.GetFloat();
             MoveDirection.y = 0;

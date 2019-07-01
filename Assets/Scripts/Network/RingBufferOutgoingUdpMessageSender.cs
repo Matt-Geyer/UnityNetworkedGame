@@ -29,13 +29,12 @@ namespace Assets.Scripts.Network
                 Endpoint = new IPEndPoint(IPAddress.Any, 0)
             };
 
-            StringBuilder output = new StringBuilder();
-            output.AppendLine($"Frame: {Time.frameCount} Attempting to publish OutgoingUdpMessage to RingBuffer ");
-            output.AppendLine($"buffer.length: {buffer.Length}");
-            output.AppendLine($"offset: {offset}");
-            output.AppendLine($"size: {size}");
-            output.AppendLine($"endpoint: {remoteEndpoint.Address}:{remoteEndpoint.Port}");
-            Debug.Log(output.ToString());
+            //StringBuilder output = new StringBuilder();
+            //output.AppendLine($"Frame: {Time.frameCount} Attempting to publish OutgoingUdpMessage to RingBuffer ");
+            //output.AppendLine($"buffer.length: {buffer.Length}");
+            //output.AppendLine($"offset: {offset}");
+            //output.AppendLine($"size: {size}");
+            //output.AppendLine($"endpoint: {remoteEndpoint.Address}:{remoteEndpoint.Port}");
 
             // needs to be a deep copy so that the sending process can keep going and potentially use/mutate the buffer that it sent
             args.Buffer = new byte[size];

@@ -36,19 +36,15 @@ namespace Assets.Scripts
         {
             StateFlag stateFlag = (StateFlag)mask;
 
-            Debug.Log($"mask: {mask}  Mask: {stateFlag}");
-
             if ((stateFlag & StateFlag.Position) == StateFlag.Position)
             {
                 writer.Put((byte)1);
                 writer.Put(Position.x);
                 writer.Put(Position.y);
                 writer.Put(Position.z);
-                Debug.Log($"Wrote positions {Position.ToString()}");
             }
             else
             {
-                Debug.Log($"No position to write");
                 writer.Put((byte)0);
             }
         }
@@ -85,7 +81,6 @@ namespace Assets.Scripts
                 ChangedStates = StateFlag.None;
                 if (_lastFrame.Position != Position)
                 {
-                    Debug.Log($"{Time.frameCount} : Position changed!");
                     ChangedStates |= StateFlag.Position;
                 }
             }

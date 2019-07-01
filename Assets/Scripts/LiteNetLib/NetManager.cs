@@ -609,15 +609,16 @@ namespace LiteNetLib
         
         public void React(NetManagerEvent evt)
         {
-            NetDebug.WriteError("Reacting to event: {0}", evt.EventId);
-            if (evt.EventId == NetManagerEvent.Event.CheckTimeouts)
+            switch (evt.EventId)
             {
-                UpdateLogic();
-            }
-            else if (evt.EventId == NetManagerEvent.Event.UdpMessage)
-            {
-                NetDebug.WriteError("Reacting to event: {0} size {1}", evt.EventId, evt.Message.DataSize);
-                OnMsgReceived(evt.Message.Buffer, evt.Message.DataSize, evt.Message.Endpoint);
+                case NetManagerEvent.Event.CheckTimeouts:
+                    UpdateLogic();
+                    break;
+                case NetManagerEvent.Event.UdpMessage:
+                    OnMsgReceived(evt.Message.Buffer, evt.Message.DataSize, evt.Message.Endpoint);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
 
@@ -912,7 +913,6 @@ namespace LiteNetLib
                         CreateEvent(NetEvent.EType.Connect, netPeer);
                     break;
                 case PacketProperty.ConnectRequest:
-                    NetDebug.WriteError("GOT A CONNECT REQUEST");
                     if (NetConnectRequestPacket.GetProtocolId(packet) != NetConstants.ProtocolId)
                     {
                         SendRawAndRecycle(NetPacketPool.GetWithProperty(PacketProperty.InvalidProtocol, 0), remoteEndPoint);
