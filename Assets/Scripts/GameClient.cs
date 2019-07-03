@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
 
 namespace Assets.Scripts
@@ -12,7 +13,7 @@ namespace Assets.Scripts
             Playing
         }
 
-        public readonly PacketStreamSystem PacketStream;
+        public readonly IPacketStreamSystem PacketStream;
 
         public readonly NetPeer Peer;
 

@@ -1,4 +1,5 @@
 ﻿using Assets.Scripts;
+using Assets.Scripts.Network.StreamSystems;
 using NUnit.Framework;
 
 namespace Assets.Tests

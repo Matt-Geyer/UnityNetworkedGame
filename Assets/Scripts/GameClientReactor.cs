@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using AiUnity.NLog.Core;
 using Assets.Scripts.Network;
+using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
 using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
@@ -75,7 +76,7 @@ namespace Assets.Scripts
                     OnConnected(evt);
                     break;
                 case NetEvent.EType.Receive:
-                    Client.PacketStream.DataReceivedEvents.Add(evt);
+                    Client.PacketStream.AddDataReceivedEvent(evt);
                     break;
                 case NetEvent.EType.Disconnect:
                     break;

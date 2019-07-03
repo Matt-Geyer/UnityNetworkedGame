@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using AiUnity.NLog.Core;
 using Assets.Scripts.Network;
+using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
 using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
@@ -142,7 +143,7 @@ namespace Assets.Scripts
         {
             GameClient gc = Clients[evt.Peer.Id];
 
-            gc.PacketStream.DataReceivedEvents.Add(evt);
+            gc.PacketStream.AddDataReceivedEvent(evt);
         }
 
         private void HandleNewConnection(NetEvent evt)

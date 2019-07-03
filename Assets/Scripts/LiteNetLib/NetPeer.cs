@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using Assets.Scripts;
+using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib.Utils;
 
 namespace LiteNetLib
@@ -41,7 +43,7 @@ namespace LiteNetLib
     /// <summary>
     /// Network peer. Main purpose is sending messages to specific peer.
     /// </summary>
-    public sealed class NetPeer
+    public sealed class NetPeer : IUnreliablePacketSender
     {
         //Ping and RTT
         private int _rtt;
@@ -1000,6 +1002,17 @@ namespace LiteNetLib
         internal void Recycle(NetPacket packet)
         {
             _packetPool.Recycle(packet);
+        }
+
+        /// <summary>
+        /// Implements IUnreliablePacketSender
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="offset"></param>
+        /// <param name="size"></param>
+        public void Send(byte[] data, int offset, int size)
+        {
+            Send(data, offset, size, DeliveryMethod.Unreliable);
         }
     }
 }
