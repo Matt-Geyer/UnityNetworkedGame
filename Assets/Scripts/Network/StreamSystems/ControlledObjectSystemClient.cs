@@ -43,7 +43,7 @@ namespace Assets.Scripts.Network.StreamSystems
             int i = _window.First;
             while (i != _window.Last)
             {
-                CurrentlyControlledObject.ApplyInput(_window.Items[i]);
+                CurrentlyControlledObject.ApplyMoveDirection(_window.Items[i].MoveDirection.z, _window.Items[i].MoveDirection.x);
                 i = ++i < _window.Max ? i : 0;
             }
         }
@@ -70,7 +70,7 @@ namespace Assets.Scripts.Network.StreamSystems
             nextSample.UpdateFromCurrentInput();
             
             // apply move 
-            CurrentlyControlledObject.ApplyInput(nextSample);
+            CurrentlyControlledObject.ApplyMoveDirection(nextSample.MoveDirection.z, nextSample.MoveDirection.x);
 
             // Update packets to transmit 
             _playerInputsToTransmit.RemoveAt(0);

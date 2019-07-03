@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using AiUnity.NLog.Core;
+using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
@@ -71,16 +72,11 @@ namespace Assets.Scripts
 
             Clients_UpdateIncomingPacketStream();
 
-            foreach (GameClient client in Clients.Values)
-            {
-                GameObject player = client.ControlledObjectSys.CurrentlyControlledObject.Entity;
 
-               // Vector3 pos = new Vector3(player.transform.position.x, 0, player.transform.position.z);
-
-               // player.transform.SetPositionAndRotation(pos, player.transform.rotation);
-            }
 
             // update game
+
+
             for (int i = 0; i < 10; i++)
             {
                 REntities[i].Position = Entities[i].transform.position;
@@ -159,7 +155,7 @@ namespace Assets.Scripts
 
             GameObject clientGameObj = Object.Instantiate(ClientPrefab);
 
-            client.ControlledObjectSys.CurrentlyControlledObject = new ControlledObject
+            client.ControlledObjectSys.CurrentlyControlledObject = new UccControlledObject
             {
                 Entity = clientGameObj,
                 PlayerController = clientGameObj.GetComponent<CharacterController>(),

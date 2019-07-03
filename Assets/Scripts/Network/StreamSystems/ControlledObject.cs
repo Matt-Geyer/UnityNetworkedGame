@@ -1,17 +1,17 @@
 ﻿using LiteNetLib.Utils;
-using Opsive.UltimateCharacterController.Character;
-using Opsive.UltimateCharacterController.Game;
 using UnityEngine;
 
 namespace Assets.Scripts.Network.StreamSystems
 {
-    public class ControlledObject : IPersistentObject
+    /// <summary>
+    /// Base functionality for an object that is controlled by player input and is persisted and updated by the ControlledObject systems
+    /// </summary>
+    public abstract class ControlledObject : IPersistentObject
     {
         public static PersistentObjectRep StaticObjectRep;
 
         public GameObject Entity;
         public CharacterController PlayerController;
-        public UltimateCharacterLocomotion PLocomotion;
 
         public PersistentObjectRep ObjectRep
         {
@@ -19,26 +19,17 @@ namespace Assets.Scripts.Network.StreamSystems
             set => StaticObjectRep = value;
         }
 
-        public virtual void ApplyInput(UserInputSample input)
-        {
-            //PlayerController.Move(input.MoveDirection * 2f * (1f / 60f));
-            KinematicObjectManager.SetCharacterMovementInput(PLocomotion.KinematicObjectIndex,
-                input.MoveDirection.z, input.MoveDirection.x);
-        }
+        /// <summary>
+        /// Deterministically apply the players input.
+        /// TODO: This is going to need to be split up into specific functions like apply move direction etc I think
+        /// </summary>
+        /// <param name="horizontalMovement"></param>
+        /// <param name="forwardMovement"></param>
+        public abstract void ApplyMoveDirection(float horizontalMovement, float forwardMovement);
 
-        public void Deserialize(NetDataReader reader)
-        {
-            Vector3 pos = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
-            Debug.Log($"READ POS: {pos}");
-            PLocomotion.SetPosition(pos, false);
-        }
+        public abstract void Deserialize(NetDataReader reader);
 
-        public void Serialize(NetDataWriter writer)
-        {
-            writer.Put(Entity.transform.position.x);
-            writer.Put(Entity.transform.position.y);
-            writer.Put(Entity.transform.position.z);
-            Debug.Log($"WROTE POS: {Entity.transform.position}");
-        }
+        public abstract void Serialize(NetDataWriter writer);
+
     }
 }

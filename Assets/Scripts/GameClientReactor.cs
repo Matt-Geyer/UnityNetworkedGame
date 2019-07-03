@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using AiUnity.NLog.Core;
+using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
@@ -101,12 +102,16 @@ namespace Assets.Scripts
         {
             Log.Debug("I'm connected!");
             _currentState = State.Playing;
-            Client = new GameClient(evt.Peer, isServer:false);
+            Client = new GameClient(evt.Peer, false);
 
             GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
-            ControlledObject pco = new ControlledObject
-                {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>(), PLocomotion = playerObj.GetComponent<UltimateCharacterLocomotion>()};
+            ControlledObject pco = new UccControlledObject
+            {
+                Entity = playerObj,
+                PlayerController = playerObj.GetComponent<CharacterController>(),
+                PLocomotion = playerObj.GetComponent<UltimateCharacterLocomotion>()
+            };
 
             Client.ControlledObjectSys.CurrentlyControlledObject = pco;
         }

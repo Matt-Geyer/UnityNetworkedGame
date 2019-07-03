@@ -65,7 +65,7 @@ namespace Assets.Scripts.Network.StreamSystems
                 _log.Debug($"Looking at _playerInputsToTransmit[{j}]");
                 _log.Debug($"Applying input with sequence: {_receivedPlayerInputs[j].Seq} to controlled object");
                 _log.Debug($"Object position before: {CurrentlyControlledObject.Entity.transform.position}");
-                CurrentlyControlledObject.ApplyInput(_receivedPlayerInputs[j]);
+                CurrentlyControlledObject.ApplyMoveDirection(_receivedPlayerInputs[j].MoveDirection.z, _receivedPlayerInputs[j].MoveDirection.x);
                 _log.Debug($"Object position after: {CurrentlyControlledObject.Entity.transform.position}");
                 SeqLastProcessed = _receivedPlayerInputs[j].Seq;
             }

@@ -1,8 +1,7 @@
-﻿using Assets.Scripts.Network.StreamSystems;
-using LiteNetLib.Utils;
+﻿using LiteNetLib.Utils;
 using UnityEngine;
 
-namespace Assets.Scripts
+namespace Assets.Scripts.Network.StreamSystems
 {
     public class UserInputSample : SeqBase
     {

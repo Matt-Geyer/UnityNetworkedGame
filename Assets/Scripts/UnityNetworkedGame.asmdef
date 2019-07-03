@@ -1,7 +1,8 @@
 {
     "name": "UnityNetworkedGame",
     "references": [
-        "GUID:cb7ef9d091ef9704cac35413bf140440"
+        "GUID:cb7ef9d091ef9704cac35413bf140440",
+        "GUID:564b1807539d5d8449a8afcf4c131535"
     ],
     "optionalUnityReferences": [],
     "includePlatforms": [],
