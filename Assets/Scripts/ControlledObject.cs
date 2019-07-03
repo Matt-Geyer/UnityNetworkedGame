@@ -1,4 +1,6 @@
 ﻿using LiteNetLib.Utils;
+using Opsive.UltimateCharacterController.Character;
+using Opsive.UltimateCharacterController.Game;
 using UnityEngine;
 
 namespace Assets.Scripts
@@ -9,6 +11,7 @@ namespace Assets.Scripts
 
         public GameObject Entity;
         public CharacterController PlayerController;
+        public UltimateCharacterLocomotion PLocomotion;
 
         public PersistentObjectRep ObjectRep
         {
@@ -18,19 +21,22 @@ namespace Assets.Scripts
 
         public virtual void ApplyInput(UserInputSample input)
         {
-            PlayerController.Move(input.MoveDirection * 2f * (1f / 60f));
+            //PlayerController.Move(input.MoveDirection * 2f * (1f / 60f));
+            KinematicObjectManager.SetCharacterMovementInput(PLocomotion.KinematicObjectIndex,
+                input.MoveDirection.z, input.MoveDirection.x);
         }
 
         public void Deserialize(NetDataReader reader)
         {
-            Vector3 pos = new Vector3(reader.GetFloat(), 0.0001f, reader.GetFloat());
+            Vector3 pos = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
             Debug.Log($"READ POS: {pos}");
-            Entity.transform.SetPositionAndRotation(pos, new Quaternion());
+            PLocomotion.SetPosition(pos, false);
         }
 
         public void Serialize(NetDataWriter writer)
         {
             writer.Put(Entity.transform.position.x);
+            writer.Put(Entity.transform.position.y);
             writer.Put(Entity.transform.position.z);
             Debug.Log($"WROTE POS: {Entity.transform.position}");
         }

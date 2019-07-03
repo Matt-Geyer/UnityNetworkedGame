@@ -130,8 +130,8 @@ namespace Assets.Scripts.Network
 
             //if (!ShouldBind)
             //{
-            //    R_NetManager.SimulateLatency = true;
-            //    R_NetManager.SimulatePacketLoss = true;
+            //RNetManager.SimulateLatency = true;
+            RNetManager.SimulatePacketLoss = true;
             //    R_NetManager.SimulationMaxLatency = 10;
             //    R_NetManager.SimulationMinLatency = 0;
             //}

@@ -51,7 +51,7 @@ namespace Assets.Scripts
             while (i != _window.Last)
             {
                 //_log.Debug($"Player position before {CurrentlyControlledObject.Entity.transform.position}");
-                //CurrentlyControlledObject.ApplyInput(_window.Items[i]);
+                CurrentlyControlledObject.ApplyInput(_window.Items[i]);
                 //_log.Debug($"Player position after {CurrentlyControlledObject.Entity.transform.position}");
                 i = ++i < _window.Max ? i : 0;
             }

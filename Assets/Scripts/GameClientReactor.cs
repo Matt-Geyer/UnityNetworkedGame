@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using AiUnity.NLog.Core;
 using Assets.Scripts.Network;
 using LiteNetLib;
+using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -104,7 +105,7 @@ namespace Assets.Scripts
             GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
             ControlledObject pco = new ControlledObject
-                {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>()};
+                {Entity = playerObj, PlayerController = playerObj.GetComponent<CharacterController>(), PLocomotion = playerObj.GetComponent<UltimateCharacterLocomotion>()};
 
             Client.ControlledObjectSys.CurrentlyControlledObject = pco;
         }

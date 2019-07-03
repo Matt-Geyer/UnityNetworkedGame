@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using AiUnity.NLog.Core;
 using Assets.Scripts.Network;
 using LiteNetLib;
+using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -73,9 +74,9 @@ namespace Assets.Scripts
             {
                 GameObject player = client.ControlledObjectSys.CurrentlyControlledObject.Entity;
 
-                Vector3 pos = new Vector3(player.transform.position.x, 0, player.transform.position.z);
+               // Vector3 pos = new Vector3(player.transform.position.x, 0, player.transform.position.z);
 
-                player.transform.SetPositionAndRotation(pos, player.transform.rotation);
+               // player.transform.SetPositionAndRotation(pos, player.transform.rotation);
             }
 
             // update game
@@ -160,7 +161,8 @@ namespace Assets.Scripts
             client.ControlledObjectSys.CurrentlyControlledObject = new ControlledObject
             {
                 Entity = clientGameObj,
-                PlayerController = clientGameObj.GetComponent<CharacterController>()
+                PlayerController = clientGameObj.GetComponent<CharacterController>(),
+                PLocomotion =  clientGameObj.GetComponent<UltimateCharacterLocomotion>()
             };
 
             Clients[client.Peer.Id] = client;
