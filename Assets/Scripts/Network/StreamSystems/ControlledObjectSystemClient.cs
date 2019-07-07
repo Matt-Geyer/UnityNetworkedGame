@@ -12,11 +12,16 @@ namespace Assets.Scripts.Network.StreamSystems
 
         private readonly SlidingWindow<UserInputSample> _window;
 
+        private readonly SlidingList<UserInputSample> _simpleWindow;
+
+
         public ControlledObjectSystemClient()
         {
             _log = NLogManager.Instance.GetLogger(this);
 
             _window = new SlidingWindow<UserInputSample>(360, () => new UserInputSample());
+
+            _simpleWindow = new SlidingList<UserInputSample>(360, () => new UserInputSample());
 
             _playerInputsToTransmit = new List<UserInputSample>
             {
@@ -33,19 +38,32 @@ namespace Assets.Scripts.Network.StreamSystems
             SeqLastProcessed = stream.GetUShort();
             _log.Debug($"SeqLastProcessed from server: {SeqLastProcessed}");
 
-            _window.AckSeq((ushort) SeqLastProcessed);
-
+           // _window.AckSeq((ushort) SeqLastProcessed);
+            _simpleWindow.AckSequence((ushort)SeqLastProcessed);
             // read state of player obj and set it using remainder of moves in buffer to predict again
             CurrentlyControlledObject.Deserialize(stream);
 
-            if (_window.Count == 0) return;
-
-            int i = _window.First;
-            while (i != _window.Last)
+            for (int i = 0; i < _simpleWindow.Items.Count; i++)
             {
-                CurrentlyControlledObject.ApplyMoveDirection(_window.Items[i].MoveDirection.z, _window.Items[i].MoveDirection.x);
-                i = ++i < _window.Max ? i : 0;
+                for (int k = 0; k < 1000; k++)
+                {
+                    CurrentlyControlledObject.ApplyMoveDirection(
+                        _simpleWindow.Items[i].MoveDirection.z,
+                        _simpleWindow.Items[i].MoveDirection.x);
+
+                }
+               
             }
+
+
+            //if (_window.Count == 0) return;
+
+            //int i = _window.First;
+            //while (i != _window.Last)
+            //{
+            //    //CurrentlyControlledObject.ApplyMoveDirection(_window.Items[i].MoveDirection.z, _window.Items[i].MoveDirection.x);
+            //    i = ++i < _window.Max ? i : 0;
+            //}
         }
 
         public override void WriteToPacketStream(NetDataWriter stream)
@@ -59,7 +77,8 @@ namespace Assets.Scripts.Network.StreamSystems
         public override void UpdateControlledObject()
         {
             // sample move
-            UserInputSample nextSample = _window.GetNextAvailable();
+            UserInputSample nextSample = _simpleWindow.GetNextAvailable();//  _window.GetNextAvailable();
+            
 
             if (nextSample == null)
             {

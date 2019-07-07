@@ -45,6 +45,7 @@ namespace Assets.Scripts.Network.StreamSystems
                        $"Seq: {_receivedPlayerInputs[1].Seq} Move:{_receivedPlayerInputs[1].MoveDirection}\n" +
                        $"Seq: {_receivedPlayerInputs[2].Seq} Move:{_receivedPlayerInputs[2].MoveDirection}\n");
 
+ 
             // In a 0 packet loss scenario Items [1] was last sequence and input [2] is this sequence
             // but we will look further back, and if they are all new then apply all 3 moves        
             ushort nextMoveSeq = (ushort) (SeqLastProcessed + 1);
@@ -62,13 +63,16 @@ namespace Assets.Scripts.Network.StreamSystems
             // This should always have at least one new move but up to 3
             for (int j = i; j <= 2; j++)
             {
-                _log.Debug($"Looking at _playerInputsToTransmit[{j}]");
-                _log.Debug($"Applying input with sequence: {_receivedPlayerInputs[j].Seq} to controlled object");
-                _log.Debug($"Object position before: {CurrentlyControlledObject.Entity.transform.position}");
+                //_log.Debug($"Looking at _playerInputsToTransmit[{j}]");
+                //_log.Debug($"Applying input with sequence: {_receivedPlayerInputs[j].Seq} to controlled object");
+                //_log.Debug($"Object position before: {CurrentlyControlledObject.Entity.transform.position}");
                 CurrentlyControlledObject.ApplyMoveDirection(_receivedPlayerInputs[j].MoveDirection.z, _receivedPlayerInputs[j].MoveDirection.x);
-                _log.Debug($"Object position after: {CurrentlyControlledObject.Entity.transform.position}");
+                //_log.Debug($"Object position after: {CurrentlyControlledObject.Entity.transform.position}");
                 SeqLastProcessed = _receivedPlayerInputs[j].Seq;
             }
+
+
+
         }
     }
 }

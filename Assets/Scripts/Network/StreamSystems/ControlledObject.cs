@@ -30,6 +30,5 @@ namespace Assets.Scripts.Network.StreamSystems
         public abstract void Deserialize(NetDataReader reader);
 
         public abstract void Serialize(NetDataWriter writer);
-
     }
 }

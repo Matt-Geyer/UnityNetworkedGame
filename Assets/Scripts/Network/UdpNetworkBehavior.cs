@@ -60,6 +60,16 @@ namespace Assets.Scripts.Network
         public int ConnectPort = 40069;
 
         /// <summary>
+        /// Should simulate latency
+        /// </summary>
+        public bool SimulateLatency;
+
+        /// <summary>
+        /// Should simulate packet loss
+        /// </summary>
+        public bool SimulatePacketLoss;
+
+        /// <summary>
         ///     Messages are polled and sent in a loop in a background thread.
         ///     This controls how many will be polled before Thread.Sleep is called
         /// </summary>
@@ -128,13 +138,9 @@ namespace Assets.Scripts.Network
             _updateEvent = new GameEvent {EventId = GameEvent.Event.Update};
             _tempEvent = new GameEvent(); // reusable event for the update loop
 
-            //if (!ShouldBind)
-            //{
-            //RNetManager.SimulateLatency = true;
-            RNetManager.SimulatePacketLoss = true;
-            //    R_NetManager.SimulationMaxLatency = 10;
-            //    R_NetManager.SimulationMinLatency = 0;
-            //}
+            if (SimulatePacketLoss) RNetManager.SimulatePacketLoss = true;
+
+            if (SimulateLatency) RNetManager.SimulateLatency = true;
 
             _cancellationSource = new CancellationTokenSource();
             _processOutgoing = new Thread(SendOutgoingUdpMessages)
@@ -228,8 +234,9 @@ namespace Assets.Scripts.Network
             {
                 _batchedEvents[msgEventThisFrame].Message = message;
                 msgEventThisFrame++;
-                return msgEventThisFrame < MaxUdpMessagesPerFrame;
+                return true; //msgEventThisFrame < MaxUdpMessagesPerFrame;
             });
+            
 
             // _BatchedEvents is filled with messages pulled off the wire, so process (react to) them
             // which will mutate the reactor state and then return a set of output events to be further handled

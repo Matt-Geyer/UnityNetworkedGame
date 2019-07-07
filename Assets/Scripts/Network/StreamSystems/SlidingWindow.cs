@@ -1,7 +1,60 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Assets.Scripts.Network.StreamSystems
 {
+
+    public class SlidingList<T> where T : SeqBase
+    {
+        public readonly List<T> Items;
+
+        public readonly int MaxItems;
+
+        private readonly Func<T> _factory;
+
+        private ushort _seq;
+
+        public SlidingList(int count, Func<T> factory)
+        {
+            MaxItems = count;
+            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+            Items = new List<T>(count);
+        }
+
+        public T GetNextAvailable()
+        {
+            if (Items.Count == MaxItems)
+            {
+                return null;
+            }
+
+            T item = _factory();
+
+            item.Seq = _seq++;
+
+            Items.Add(item);
+
+            return item;
+        }
+
+        public void AckSequence(ushort sequence)
+        {
+            if (Items.Count == 0) return;
+
+            T first = Items[0];
+            T last = Items.Last();
+
+            while (first != null && SequenceHelper.SeqIsInsideRangeInclusive(first.Seq, last.Seq, sequence, MaxItems) && Items.Count > 0)
+            {
+                Items.RemoveAt(0);
+                first = Items.FirstOrDefault();
+            }
+        }
+
+    }
+
+
     public class SlidingWindow<T> where T : SeqBase
     {
         public int Count;

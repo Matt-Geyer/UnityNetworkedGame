@@ -13,8 +13,9 @@ namespace Assets.Scripts.CharacterControllerStuff
     
         public override void ApplyMoveDirection(float horizontalMovement, float forwardMovement)
         {
-            KinematicObjectManager.SetCharacterMovementInput(PLocomotion.KinematicObjectIndex,
-                horizontalMovement, forwardMovement);
+           // KinematicObjectManager.SetCharacterMovementInput(PLocomotion.KinematicObjectIndex,
+           //     horizontalMovement, forwardMovement);
+            PLocomotion.Move(horizontalMovement, forwardMovement, 1);
         }
 
         public override void Deserialize(NetDataReader reader)

@@ -542,29 +542,8 @@ namespace LiteNetLib
             var peersToRemove = new List<NetPeer>();
             var stopwatch = new Stopwatch();
             stopwatch.Start();
-
-       
-
-            //while (IsRunning)
-            //{
 #if DEBUG
-                if (SimulateLatency)
-                {
-                    var time = DateTime.UtcNow;
-                    //lock (_pingSimulationList)
-                    //{
-                        for (int i = 0; i < _pingSimulationList.Count; i++)
-                        {
-                            var incomingData = _pingSimulationList[i];
-                            if (incomingData.TimeWhenGet <= time)
-                            {
-                                DataReceived(incomingData.Data, incomingData.Data.Length, incomingData.EndPoint);
-                                _pingSimulationList.RemoveAt(i);
-                                i--;
-                            }
-                        }
-                    //}
-                }
+              
 #endif
 
 #if STATS_ENABLED
