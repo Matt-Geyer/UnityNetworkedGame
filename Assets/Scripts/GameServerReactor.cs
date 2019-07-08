@@ -4,6 +4,7 @@ using AiUnity.NLog.Core;
 using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
+using KinematicCharacterController;
 using LiteNetLib;
 using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
@@ -43,6 +44,10 @@ namespace Assets.Scripts
 
         public void Initialize()
         {
+            KinematicCharacterSystem.AutoSimulation = false;
+            KinematicCharacterSystem.Interpolate = false;
+            KinematicCharacterSystem.EnsureCreation();
+
             // add a couple -- this is not where this would normally be ofc
             for (int i = 0; i < 10; i++)
             {
@@ -69,14 +74,32 @@ namespace Assets.Scripts
         private void OnUpdate()
         {
             _log.Debug($"{Time.frameCount}: STARTED UPDATE");
+            
+            //foreach (var gc in Clients.Values)
+            //{
+            //    gc.ControlledObjectSys.CurrentlyControlledObject.ApplyMoveDirection(0, 0);
+            //}
 
             Clients_UpdateIncomingPacketStream();
 
+            if (KinematicCharacterSystem.CharacterMotors.Count > 0)
+            {
 
 
-            // update game
+                //KinematicCharacterSystem.PreSimulationInterpolationUpdate(Time.fixedDeltaTime);
 
+                // update game
+                KinematicCharacterSystem.Simulate(
+                    Time.fixedDeltaTime,
+                    KinematicCharacterSystem.CharacterMotors,
+                    KinematicCharacterSystem.CharacterMotors.Count,
+                    KinematicCharacterSystem.PhysicsMovers,
+                    KinematicCharacterSystem.PhysicsMovers.Count);
 
+                //KinematicCharacterSystem.PostSimulationInterpolationUpdate(Time.fixedDeltaTime);
+            }
+
+            
             for (int i = 0; i < 10; i++)
             {
                 REntities[i].Position = Entities[i].transform.position;
@@ -155,12 +178,16 @@ namespace Assets.Scripts
 
             GameObject clientGameObj = Object.Instantiate(ClientPrefab);
 
-            client.ControlledObjectSys.CurrentlyControlledObject = new UccControlledObject
+            var kcc = new KccControlledObject
             {
                 Entity = clientGameObj,
                 PlayerController = clientGameObj.GetComponent<CharacterController>(),
-                PLocomotion =  clientGameObj.GetComponent<UltimateCharacterLocomotion>()
+                Controller = clientGameObj.GetComponent<MyCharacterController>()
             };
+
+            kcc.Controller.Motor.SetPosition(new Vector3(0,2,0));
+
+            client.ControlledObjectSys.CurrentlyControlledObject = kcc;
 
             Clients[client.Peer.Id] = client;
 

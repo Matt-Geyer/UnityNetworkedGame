@@ -4,6 +4,7 @@ using AiUnity.NLog.Core;
 using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
+using KinematicCharacterController;
 using LiteNetLib;
 using Opsive.UltimateCharacterController.Character;
 using UnityEngine;
@@ -28,6 +29,10 @@ namespace Assets.Scripts
 
         public GameClientReactor()
         {
+            KinematicCharacterSystem.AutoSimulation = false;
+            KinematicCharacterSystem.Interpolate = false;
+            KinematicCharacterSystem.EnsureCreation();
+
             _currentState = State.Connecting;
 
             Log = NLogManager.Instance.GetLogger(this);
@@ -57,13 +62,24 @@ namespace Assets.Scripts
 
             Client.ControlledObjectSys.UpdateControlledObject();
 
-            // Update game
             foreach (ReplicationRecord r in Client.Replication.ReplicatedObjects.Values)
             {
                 if (!RGameObjects.ContainsKey(r.Id)) RGameObjects[r.Id] = Object.Instantiate(EntityPrefab);
-                ReplicatableGameObject rgo = (ReplicatableGameObject) r.Entity;
+                ReplicatableGameObject rgo = (ReplicatableGameObject)r.Entity;
                 RGameObjects[r.Id].transform.SetPositionAndRotation(rgo.Position, new Quaternion());
             }
+
+            //KinematicCharacterSystem.PreSimulationInterpolationUpdate(Time.fixedDeltaTime);
+
+            // Update game
+            KinematicCharacterSystem.Simulate(
+                Time.fixedDeltaTime,
+                KinematicCharacterSystem.CharacterMotors,
+                KinematicCharacterSystem.CharacterMotors.Count,
+                KinematicCharacterSystem.PhysicsMovers,
+                KinematicCharacterSystem.PhysicsMovers.Count);
+
+            //KinematicCharacterSystem.PostSimulationInterpolationUpdate(Time.fixedDeltaTime);
 
             Client.PacketStream.UpdateOutgoing();
         }
@@ -106,12 +122,17 @@ namespace Assets.Scripts
 
             GameObject playerObj = Object.Instantiate(PlayerPrefab);
 
-            ControlledObject pco = new UccControlledObject
+            var pco = new KccControlledObject
             {
                 Entity = playerObj,
                 PlayerController = playerObj.GetComponent<CharacterController>(),
-                PLocomotion = playerObj.GetComponent<UltimateCharacterLocomotion>()
+                Controller = playerObj.GetComponent<MyCharacterController>()
             };
+
+            pco.Controller.Motor.SetPosition(new Vector3(0, 2, 0));
+
+            Debug.Log($"PCO.Controller: {pco.Controller}  {pco.Controller.Motor}");
+
 
             Client.ControlledObjectSys.CurrentlyControlledObject = pco;
         }

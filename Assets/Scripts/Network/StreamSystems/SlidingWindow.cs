@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 
 namespace Assets.Scripts.Network.StreamSystems
 {
@@ -38,20 +39,25 @@ namespace Assets.Scripts.Network.StreamSystems
             return item;
         }
 
-        public void AckSequence(ushort sequence)
+        public T AckSequence(ushort sequence)
         {
-            if (Items.Count == 0) return;
+            if (Items.Count == 0) return null;
 
-            T first = Items[0];
+            T checkItem = Items[0];
             T last = Items.Last();
 
-            while (first != null && SequenceHelper.SeqIsInsideRangeInclusive(first.Seq, last.Seq, sequence, MaxItems) && Items.Count > 0)
+            if (!SequenceHelper.SeqIsInsideRangeInclusive(checkItem.Seq, last.Seq, sequence, MaxItems)) return null;
+
+            while (checkItem.Seq != sequence)
             {
                 Items.RemoveAt(0);
-                first = Items.FirstOrDefault();
+                checkItem = Items.First();
             }
-        }
 
+            Items.RemoveAt(0);
+
+            return checkItem;
+        }
     }
 
 

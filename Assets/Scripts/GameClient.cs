@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network.StreamSystems;
 using LiteNetLib;
 
@@ -39,7 +40,7 @@ namespace Assets.Scripts
             // the order they appear in this list so the stream has to be read in the same order it was written
             if (isServer)
             {
-                ControlledObjectSys = new ControlledObjectedSystemServer();
+                ControlledObjectSys = new KccControlledObjectSystemServer();
 
                 streamWriters.Add(ControlledObjectSys); 
                 streamWriters.Add(Replication);           
@@ -50,7 +51,7 @@ namespace Assets.Scripts
             }
             else
             {
-                ControlledObjectSys = new ControlledObjectSystemClient();
+                ControlledObjectSys = new KccControlledObjectSystemClient();
 
                 streamWriters.Add(ControlledObjectSys);
 

@@ -29,6 +29,19 @@
             return SeqIsAheadButInsideWindow32(check, end) && SeqIsAheadButInsideWindow32(start, check);
         }
 
+        public static bool SeqIsAheadButInsideWindow(byte current, byte check, int window)
+        {
+            // 223 is byte.MaxValue - 32
+            return ((check > current && (check - current <= window)) ||
+                    (check < current && (current > byte.MaxValue - window && check < (byte)(window - (byte.MaxValue - current)))));
+        }
+
+        public static bool SeqIsAheadButInsideWindow(ushort current, ushort check, int window)
+        {
+            return ((check > current && (check - current <= window)) ||
+                    (check < current && (current > ushort.MaxValue - window && check < (ushort)(window - (ushort.MaxValue - current)))));
+        }
+
         public static bool SeqIsEqualOrAheadButInsideWindow(ushort current, ushort check, int window)
         {
             return (current == check ||

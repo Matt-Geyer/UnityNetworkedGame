@@ -47,9 +47,9 @@ namespace Assets.Scripts.Network.StreamSystems
             {
                 for (int k = 0; k < 1000; k++)
                 {
-                    CurrentlyControlledObject.ApplyMoveDirection(
-                        _simpleWindow.Items[i].MoveDirection.z,
-                        _simpleWindow.Items[i].MoveDirection.x);
+                    //CurrentlyControlledObject.ApplyMoveDirection(
+                    //    _simpleWindow.Items[i].MoveDirection.z,
+                    //    _simpleWindow.Items[i].MoveDirection.x);
 
                 }
                

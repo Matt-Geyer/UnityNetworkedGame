@@ -251,12 +251,17 @@ namespace Assets.Scripts.Network
                 RGameReactor.React(_tempEvent);
             }
 
-            _timeSinceLastUpdate += Time.deltaTime;
+            //_timeSinceLastUpdate += Time.deltaTime;
 
-            if (_timeSinceLastUpdate < GameReactorUpdateTimeF) return;
+            //if (_timeSinceLastUpdate < GameReactorUpdateTimeF) return;
 
-            _timeSinceLastUpdate = 0;
+            //_timeSinceLastUpdate = 0;
 
+            //RGameReactor.React(_updateEvent);
+        }
+
+        public void FixedUpdate()
+        {
             RGameReactor.React(_updateEvent);
         }
 
