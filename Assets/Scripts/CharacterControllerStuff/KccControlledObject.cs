@@ -222,11 +222,12 @@ namespace Assets.Scripts.CharacterControllerStuff
 
                 DebugGraph.Log("Prediction Mismatch", difVector3.magnitude);
 
-                if (difVector3.magnitude >= .1)
+                if (difVector3.magnitude >= .01)
                 {
                     cs.Position += difVector3 * 0.1f;
                 }
          
+                //kcc.Controller.Motor.ApplyState(cs);
                 kcc.Controller.Motor.SetPosition(cs.Position);
 
             }

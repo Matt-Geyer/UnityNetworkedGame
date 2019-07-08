@@ -268,7 +268,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 5e685fe7be0513c4785ba3a771bd37af, type: 2}
+  - {fileID: 2100000, guid: 5fd3da07078e6674e993ecdace763739, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -888,7 +888,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ObjectPrefab: {fileID: 5541842073335477417, guid: f069de58fb76efa41a7ac48bba7a9f4e,
     type: 3}
-  PlayerPrefab: {fileID: 6055915878627865555, guid: 0336032d97ba6174982bcf6c79413935,
+  PlayerPrefab: {fileID: 7722256108184127340, guid: a743b111afb7fcf40881519b9abeb03b,
     type: 3}
 --- !u!224 &1980712389
 RectTransform:
