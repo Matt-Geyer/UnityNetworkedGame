@@ -1,3 +1,4 @@
+using Animancer;
 using UnityEngine;
 
 
@@ -5,6 +6,14 @@ namespace Assets.Scripts
 {
     public class MyPlayer : MonoBehaviour
     {
+
+        [SerializeField] private AnimancerComponent _animancer;
+
+        [SerializeField] private AnimationClip _idleClip;
+
+        [SerializeField] private FloatControllerState.Serializable _walkBlendTree;
+
+
         public ExampleCharacterCamera OrbitCamera;
         public Transform CameraFollowPoint;
         public MyCharacterController Character;
@@ -25,6 +34,13 @@ namespace Assets.Scripts
             // Ignore the character's collider(s) for camera obstruction checks
             OrbitCamera.IgnoredColliders.Clear();
             OrbitCamera.IgnoredColliders.AddRange(Character.GetComponentsInChildren<Collider>());
+
+            _animancer.Transition(_walkBlendTree);
+
+            _walkBlendTree.State.Playable.SetBool("Walking", true);
+
+            // _animancer.Play(_idleClip);
+
         }
 
         private void Update()
@@ -69,15 +85,30 @@ namespace Assets.Scripts
 
         private void HandleCharacterInput()
         {
-            PlayerCharacterInputs characterInputs = new PlayerCharacterInputs();
+            PlayerCharacterInputs characterInputs = new PlayerCharacterInputs
+            {
+                MoveAxisForward = Input.GetAxis(VerticalInput),
+                MoveAxisRight = Input.GetAxis(HorizontalInput),
+                CameraRotation = OrbitCamera.Transform.rotation
+            };
 
             // Build the CharacterInputs struct
-            characterInputs.MoveAxisForward = Input.GetAxisRaw(VerticalInput);
-            characterInputs.MoveAxisRight = Input.GetAxisRaw(HorizontalInput);
-            characterInputs.CameraRotation = OrbitCamera.Transform.rotation;
+
+            Vector3 moveDir = new Vector3(characterInputs.MoveAxisRight,0, characterInputs.MoveAxisForward);
+
+            float magnitude = moveDir.magnitude;
+
+            if (magnitude > 1)
+                moveDir.Normalize();
+
+            Vector3 localDir = Character.transform.InverseTransformDirection(moveDir);
 
             // Apply inputs to character
             Character.SetInputs(ref characterInputs);
+
+            _walkBlendTree.State.Playable.SetFloat("RelativeVertical", moveDir.z);
+            _walkBlendTree.State.Playable.SetFloat("RelativeHorizontal", moveDir.x);
+            _walkBlendTree.State.Playable.SetFloat("Speed", magnitude);
         }
     }
 }

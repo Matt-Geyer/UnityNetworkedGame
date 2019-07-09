@@ -197,15 +197,16 @@ namespace Assets.Scripts.CharacterControllerStuff
                 // clear input window?
                 _simpleWindow.Items.Clear();
             }
-            else if (distance > .01)
+            else if (distance > .05)
             {
                 stateAtSequence.MotorState.Position = serverState.Position;
                 stateAtSequence.MotorState.AttachedRigidbodyVelocity = serverState.AttachedRigidbodyVelocity;
                 stateAtSequence.MotorState.BaseVelocity = serverState.BaseVelocity;
 
                 kcc.Controller.Motor.ApplyState(stateAtSequence.MotorState);
+                //kcc.ApplyMoveDirection(stateAtSequence.UserInput.MoveDirection.z, stateAtSequence.UserInput.MoveDirection.x);
 
-                KinematicCharacterSystem.Simulate(Time.fixedDeltaTime, motors, 1, null, 0);
+                //KinematicCharacterSystem.Simulate(Time.fixedDeltaTime, motors, 1, null, 0);
 
                 for (int i = 0; i < _simpleWindow.Items.Count; i++)
                 {
@@ -226,9 +227,13 @@ namespace Assets.Scripts.CharacterControllerStuff
                 {
                     cs.Position += difVector3 * 0.1f;
                 }
-         
-                //kcc.Controller.Motor.ApplyState(cs);
-                kcc.Controller.Motor.SetPosition(cs.Position);
+                else
+                {
+                    //cs.Position = predictedState.Position;
+                }
+           
+                kcc.Controller.Motor.ApplyState(cs);
+                //kcc.Controller.Motor.SetPosition(cs.Position);
 
             }
 
