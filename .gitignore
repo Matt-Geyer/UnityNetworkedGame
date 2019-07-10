@@ -18,8 +18,18 @@ Assets/KinematicCharacterController
 Assets/KinematicCharacterController.meta
 Assets/Forceling
 Assets/Forceling.meta
+Assets/HeadlessBuilder
+Assets/HeadlessBuilder.meta
+
+
+Assets/Plugins
+
 Assets/Plugins/Animancer
 Assets/Plugins/Animancer.meta
+
+
+headless_builder_backup
+
 
 # Visual Studio cache directory
 .vs/
