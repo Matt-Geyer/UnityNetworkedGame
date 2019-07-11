@@ -537,7 +537,7 @@ namespace LiteNetLib
         //Update function
         // IE Remove timed out connections
         // becomes event that we react to
-        private void UpdateLogic()
+        public void Update()
         {
             var peersToRemove = new List<NetPeer>();
             var stopwatch = new Stopwatch();
@@ -591,7 +591,7 @@ namespace LiteNetLib
             switch (evt.EventId)
             {
                 case NetManagerEvent.Event.CheckTimeouts:
-                    UpdateLogic();
+                    Update();
                     break;
                 case NetManagerEvent.Event.UdpMessage:
                     OnMsgReceived(evt.Message.Buffer, evt.Message.DataSize, evt.Message.Endpoint);
@@ -601,36 +601,8 @@ namespace LiteNetLib
             }
         }
 
-        private void OnMsgReceived(byte[] data, int length, IPEndPoint remoteEndPoint)
-        {         
-#if DEBUG
-            if (SimulatePacketLoss && _randomGenerator.NextDouble() * 100 < SimulationPacketLossChance)
-            {
-                //drop packet
-                return;
-            }
-            if (SimulateLatency)
-            {
-                int latency = _randomGenerator.Next(SimulationMinLatency, SimulationMaxLatency);
-                if (latency > MinLatencyThreshold)
-                {
-                    byte[] holdedData = new byte[length];
-                    Buffer.BlockCopy(data, 0, holdedData, 0, length);
-
-                    //lock (_pingSimulationList)
-                    //{
-                        _pingSimulationList.Add(new IncomingData
-                        {
-                            Data = holdedData,
-                            EndPoint = remoteEndPoint,
-                            TimeWhenGet = DateTime.UtcNow.AddMilliseconds(latency)
-                        });
-                    //}
-                    //hold packet
-                    return;
-                }
-            }
-#endif
+        public void OnMsgReceived(byte[] data, int length, IPEndPoint remoteEndPoint)
+        {
             try
             {
                 //ProcessEvents
@@ -1033,7 +1005,7 @@ namespace LiteNetLib
             //if (!_socket.Bind(addressIPv4, addressIPv6, port, ReuseAddress))
             //    return false;
             IsRunning = true;
-            //_logicThread = new Thread(UpdateLogic) { Name = "LogicThread", IsBackground = true };
+            //_logicThread = new Thread(Update) { Name = "LogicThread", IsBackground = true };
             //_logicThread.Start();
             return true;
         }

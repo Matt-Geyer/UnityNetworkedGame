@@ -311,7 +311,6 @@ namespace Assets.Scripts.CharacterControllerStuff
         public override void Serialize(NetDataWriter writer)
         {
             KccControlledObjectSystemClient.SerializeMotorState(Controller.Motor.GetState(), writer);
-            Debug.Log($"WROTE POS: {Controller.Motor.transform.position}");
         }
     }
 }

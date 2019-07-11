@@ -6,6 +6,6 @@ namespace Assets.Scripts.Network
     {
         public NetManager RNetManager;
         
-        public abstract void React(GameEvent evt);
+        public virtual void React(GameEvent evt) { }
     }
 }

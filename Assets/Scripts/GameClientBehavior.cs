@@ -1,10 +1,11 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Assets.Scripts.Network;
+using UniRx;
 using UnityEngine;
 
 namespace Assets.Scripts
 {
-    [RequireComponent(typeof(UdpNetworkBehavior))]
     public class GameClientBehavior : MonoBehaviour
     {
         private UdpNetworkBehavior _network;
@@ -12,19 +13,20 @@ namespace Assets.Scripts
         public GameObject EntityPrefab;
         public GameObject PlayerPrefab;
 
+
         // Start is called before the first frame update
         private void Start()
         {
-            GameClientReactor reactor = new GameClientReactor
+            _network = new UdpNetworkBehavior
             {
-                EntityPrefab = EntityPrefab,
-                PlayerPrefab = PlayerPrefab
+                ShouldBind = false,
+                ShouldConnect = true
             };
-            _network = GetComponent<UdpNetworkBehavior>();
-            _network.RGameReactor = reactor;
-            _network.ShouldBind = false;
-            _network.ShouldConnect = true;
-            _network.enabled = true;
+
+            GameClientRx reactor =
+                new GameClientRx(_network.RNetManager, _network.NetEventStream, EntityPrefab, PlayerPrefab);
+
+            _network.Start();
         }
     }
 }

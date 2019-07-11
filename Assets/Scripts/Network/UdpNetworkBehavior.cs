@@ -1,38 +1,28 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using AiUnity.NLog.Core;
 using Disruptor;
 using Disruptor.Dsl;
 using LiteNetLib;
+using UniRx;
 using UnityEngine;
 
 namespace Assets.Scripts.Network
 {
-    public class UdpNetworkBehavior : MonoBehaviour
+    public class UdpNetworkBehavior
     {
-        /// <summary>
-        ///     How often to send update event to the game reactor
-        /// </summary>
-        private const float GameReactorUpdateTimeF = 1f / 60f;
-
-        private readonly NetManagerEvent _checkTimeoutEvent = new NetManagerEvent
-            {EventId = NetManagerEvent.Event.CheckTimeouts};
-
-        private NetManagerEvent[] _batchedEvents;
-        private CancellationTokenSource _cancellationSource;
-        private RingBuffer<OutgoingUdpMessage> _outgoingMessageBuffer;
-        private EventPoller<OutgoingUdpMessage> _outgoingMessagePoller;
-        private RingBufferOutgoingUdpMessageSender _outgoingUdpMessageSender;
-        private Thread _processOutgoing;
-        private RingBuffer<UdpMessage> _receivedMessageBuffer;
-        private EventPoller<UdpMessage> _receivedMessagePoller;
-        private UdpSocket _socket;
-        private AsyncUdpSocketListener _socketListener;
-        private AsyncUdpSocketSender _socketSender;
-        private GameEvent _tempEvent;
-        private float _timeSinceLastUpdate;
-        private GameEvent _updateEvent;
+        private readonly Queue<UdpMessage> _receivedUdpMessages;
+        private readonly CancellationTokenSource _cancellationSource;
+        private readonly EventPoller<OutgoingUdpMessage> _outgoingMessagePoller;
+        private readonly Thread _processOutgoing;
+        private readonly RingBuffer<UdpMessage> _receivedMessageBuffer;
+        private readonly EventPoller<UdpMessage> _receivedMessagePoller;
+        private readonly UdpSocket _socket;
+        private readonly AsyncUdpSocketListener _socketListener;
+        private readonly AsyncUdpSocketSender _socketSender;
 
         /// <summary>
         ///     The local endpoint address to bind to
@@ -47,7 +37,7 @@ namespace Assets.Scripts.Network
         /// <summary>
         ///     How often the CheckTimeout logic should run
         /// </summary>
-        public float CheckTimeoutFrequencySeconds = 1.0f;
+        public float CheckTimeoutFrequencySeconds = 20.0f;
 
         /// <summary>
         ///     The host to connect to
@@ -59,15 +49,6 @@ namespace Assets.Scripts.Network
         /// </summary>
         public int ConnectPort = 40069;
 
-        /// <summary>
-        /// Should simulate latency
-        /// </summary>
-        public bool SimulateLatency;
-
-        /// <summary>
-        /// Should simulate packet loss
-        /// </summary>
-        public bool SimulatePacketLoss;
 
         /// <summary>
         ///     Messages are polled and sent in a loop in a background thread.
@@ -80,10 +61,8 @@ namespace Assets.Scripts.Network
         /// </summary>
         public int MaxUdpMessagesPerFrame = 100;
 
-        /// <summary>
-        ///     The game server reactor that will react to messages
-        /// </summary>
-        public NetEventReactor RGameReactor;
+
+        public IObservable<NetEvent> NetEventStream;
 
         public NetManager RNetManager;
 
@@ -97,9 +76,11 @@ namespace Assets.Scripts.Network
         /// </summary>
         public bool ShouldConnect = false;
 
-        // Start is called before the first frame update
-        private void Start()
+        public UdpNetworkBehavior()
         {
+            NLogger log = NLogManager.Instance.GetLogger(this);
+
+            _receivedUdpMessages = new Queue<UdpMessage>();
             // UDP Socket Listener/Sender initialization
             _socket = new UdpSocket();
             _socketListener = new AsyncUdpSocketListener(_socket);
@@ -117,43 +98,66 @@ namespace Assets.Scripts.Network
             _receivedMessagePoller = _receivedMessageBuffer.NewPoller();
             _receivedMessageBuffer.AddGatingSequences(_receivedMessagePoller.Sequence);
 
-            _outgoingMessageBuffer = RingBuffer<OutgoingUdpMessage>.Create(
+            RingBuffer<OutgoingUdpMessage> outgoingMessageBuffer = RingBuffer<OutgoingUdpMessage>.Create(
                 ProducerType.Single,
                 OutgoingUdpMessage.DefaultFactory,
                 256,
                 new BusySpinWaitStrategy());
-            _outgoingMessagePoller = _outgoingMessageBuffer.NewPoller();
-            _outgoingMessageBuffer.AddGatingSequences(_outgoingMessagePoller.Sequence);
+            _outgoingMessagePoller = outgoingMessageBuffer.NewPoller();
+            outgoingMessageBuffer.AddGatingSequences(_outgoingMessagePoller.Sequence);
 
             // This makes a deep copy of the sent message before publishing it to the outgoing message buffer
             // It makes a deep copy because the buffers containing the data in the main thread could change
             // before the data has a chance to be copied into the ring buffer. Prob want to think of a way around this.. maybe more ring buffers
-            _outgoingUdpMessageSender = new RingBufferOutgoingUdpMessageSender(_outgoingMessageBuffer);
+            RingBufferOutgoingUdpMessageSender outgoingUdpMessageSender = new RingBufferOutgoingUdpMessageSender(outgoingMessageBuffer);
 
             // The NetManager reactor. TODO: Benchmark and see if I have actually made any improvement by implementing disruptor
             // Though I do like the idea of clearing up the locks and doing all the logic in the main thread esp since
             // the game server will need to routinely access connected client info
-            RNetManager = new NetManager(null, _outgoingUdpMessageSender) {DisconnectTimeout = 600};
-            RGameReactor.RNetManager = RNetManager;
-            _updateEvent = new GameEvent {EventId = GameEvent.Event.Update};
-            _tempEvent = new GameEvent(); // reusable event for the update loop
-
-            if (SimulatePacketLoss) RNetManager.SimulatePacketLoss = true;
-
-            if (SimulateLatency) RNetManager.SimulateLatency = true;
+            RNetManager = new NetManager(null, outgoingUdpMessageSender) {DisconnectTimeout = 600};
 
             _cancellationSource = new CancellationTokenSource();
             _processOutgoing = new Thread(SendOutgoingUdpMessages)
             {
-                IsBackground = true,
                 Name = "UdpServer"
             };
 
             // Every frame the previous frames events get replaced with new output events created by the NetManager reactor for that frame
-            _batchedEvents = new NetManagerEvent[MaxUdpMessagesPerFrame];
+            NetManagerEvent[] batchedEvents = new NetManagerEvent[MaxUdpMessagesPerFrame];
             for (int i = 0; i < MaxUdpMessagesPerFrame; i++)
-                _batchedEvents[i] = new NetManagerEvent {EventId = NetManagerEvent.Event.UdpMessage};
+                batchedEvents[i] = new NetManagerEvent {EventId = NetManagerEvent.Event.UdpMessage};
 
+            IDisposable subscription = null;
+
+            // Establish a UdpMessage stream that will poll the ring buffer every update frame
+            // and pass them along to the subscriber. Only one subscriber for this stream but I imagine
+            // you could put something in between to enable multiple.. I have no use case for it yet tho 
+            NetEventStream = Observable.Create<NetEvent>(observer =>
+            {
+                 log.Info("Observer subscribed to NetEvent stream");
+
+                if (subscription != null) throw new Exception("MULTIPLE SUBSCRIBERS TO UDP MESSAGE STREAM!");
+
+                // TODO: If I want to disable this when this behavior gets disabled then add a Where clause with this.enabled == true
+                subscription = GetUdpMessages().Subscribe(msg =>
+                {
+                    RNetManager.OnMsgReceived(msg.Buffer, msg.DataSize, msg.Endpoint);
+
+                    // TODO: reactive netmanager
+                    while (RNetManager.NetEventsQueue.Count > 0) observer.OnNext(RNetManager.NetEventsQueue.Dequeue());
+
+                });
+
+                return Disposable.Create(() =>
+                {
+                    subscription.Dispose();
+                    subscription = null;
+                });
+            });
+        }
+
+        public void Start()
+        {
             // BIND 
             if (ShouldBind)
                 _socket.BindLocalIpv4(BindAddress, BindPort);
@@ -172,18 +176,41 @@ namespace Assets.Scripts.Network
             // Start thread that polls for outgoing udp messages and sends them on the socket
             _processOutgoing.Start(new object[] {_socketSender, _outgoingMessagePoller, _cancellationSource.Token});
 
-            // Start coroutine that will send the check timeout event
-            StartCoroutine("SendCheckTimeoutEvent");
+            TimeSpan timeoutCheckFrequency = TimeSpan.FromSeconds(CheckTimeoutFrequencySeconds);
+
+            // Start a timer that will perform update logic on the net manager
+            Observable.Interval(timeoutCheckFrequency).Subscribe(_ => RNetManager.Update());
         }
 
-        
-        private IEnumerator SendCheckTimeoutEvent()
+        private IObservable<UdpMessage> GetUdpMessages()
         {
-            while (true)
+            return Observable.Create<UdpMessage>(observer =>
             {
-                RNetManager.React(_checkTimeoutEvent);
-                yield return new WaitForSeconds(CheckTimeoutFrequencySeconds);
-            }
+                IDisposable subscription = Observable.EveryUpdate().Subscribe(
+                    _ =>
+                    {
+                        Debug.Log("Polling for messages!");
+
+                        // Poll all udp messages from the ring buffer and queue them up.. I thought about
+                        // calling observer.OnNext from inside the Poll function but I think that could end up
+                        // causing it to just always keep polling.. i could also limit the poll to stop going after a certain number of messages
+                        // could also use something like buffer or window maybe
+                        _receivedMessagePoller.Poll((message, sequence, endOfBatch) =>
+                        {
+                            _receivedUdpMessages.Enqueue(message);
+                            return true;
+                        });
+
+                        while (_receivedUdpMessages.Count > 0) observer.OnNext(_receivedUdpMessages.Dequeue());
+                    },
+                    observer.OnCompleted);
+
+                return Disposable.Create(() =>
+                {
+                    subscription.Dispose();
+                    subscription = null;
+                });
+            });
         }
 
         /// <summary>
@@ -220,56 +247,6 @@ namespace Assets.Scripts.Network
         {
             _receivedMessageBuffer.PublishEvent(UdpMessageTranslator.StaticInstance, buffer, bufferLength,
                 remoteEndpoint);
-        }
-
-        // Update is called once per frame
-        private void Update()
-        {
-            // Reset processed message count
-            int msgEventThisFrame = 0;
-
-            // Poll until max messages or no more messages to receive, copying the message data 
-            // into the batched events buffer
-            _receivedMessagePoller.Poll((message, sequence, endOfBatch) =>
-            {
-                _batchedEvents[msgEventThisFrame].Message = message;
-                msgEventThisFrame++;
-                return true; //msgEventThisFrame < MaxUdpMessagesPerFrame;
-            });
-            
-
-            // _BatchedEvents is filled with messages pulled off the wire, so process (react to) them
-            // which will mutate the reactor state and then return a set of output events to be further handled
-            for (int i = 0; i < msgEventThisFrame; i++) RNetManager.React(_batchedEvents[i]);
-
-            // React to all of the output events with the a game server reactor
-            _tempEvent.EventId = GameEvent.Event.NetEvent;
-            while (RNetManager.NetEventsQueue.Count > 0)
-            {
-                _tempEvent.NetEvent = RNetManager.NetEventsQueue.Dequeue();
-
-                RGameReactor.React(_tempEvent);
-            }
-
-            //_timeSinceLastUpdate += Time.deltaTime;
-
-            //if (_timeSinceLastUpdate < GameReactorUpdateTimeF) return;
-
-            //_timeSinceLastUpdate = 0;
-
-            //RGameReactor.React(_updateEvent);
-        }
-
-        public void FixedUpdate()
-        {
-            RGameReactor.React(_updateEvent);
-        }
-
-        private void OnDestroy()
-        {
-            StopCoroutine("SendTimeoutEvent");
-            _cancellationSource.Cancel();
-            _processOutgoing.Join();
         }
     }
 }

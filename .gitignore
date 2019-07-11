@@ -20,14 +20,12 @@ Assets/Forceling
 Assets/Forceling.meta
 Assets/HeadlessBuilder
 Assets/HeadlessBuilder.meta
-
+Assets/Rewired
+Assets/Rewired.meta
 
 Assets/Plugins
 
-Assets/Plugins/Animancer
-Assets/Plugins/Animancer.meta
-
-
+RewiredBackup
 headless_builder_backup
 
 
