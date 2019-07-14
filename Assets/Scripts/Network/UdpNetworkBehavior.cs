@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using AiUnity.NLog.Core;
@@ -9,7 +8,6 @@ using Disruptor;
 using Disruptor.Dsl;
 using LiteNetLib;
 using UniRx;
-using UnityEngine;
 
 namespace Assets.Scripts.Network
 {
@@ -20,7 +18,6 @@ namespace Assets.Scripts.Network
         private readonly EventPoller<OutgoingUdpMessage> _outgoingMessagePoller;
         private readonly Thread _processOutgoing;
         private readonly RingBuffer<UdpMessage> _receivedMessageBuffer;
-        private readonly EventPoller<UdpMessage> _receivedMessagePoller;
         private readonly UdpSocket _socket;
         private readonly AsyncUdpSocketListener _socketListener;
         private readonly AsyncUdpSocketSender _socketSender;
@@ -61,10 +58,7 @@ namespace Assets.Scripts.Network
         ///     Maximum number of UdpMessage (incoming) events to process in once frame
         /// </summary>
         public int MaxUdpMessagesPerFrame = 100;
-
-
-        public IObservable<NetEvent> NetEventStream;
-
+        
         public NetManager RNetManager;
 
         /// <summary>
@@ -83,12 +77,9 @@ namespace Assets.Scripts.Network
 
         public IObservable<UdpMessage> UdpMessageStream => _udpMessageStream.AsObservable();
 
-        private readonly Dictionary<Guid,IObserver<UdpMessage>> _observers;
-
         public UdpNetworkBehavior()
         {
             NLogger log = NLogManager.Instance.GetLogger(this);
-            _observers = new Dictionary<Guid, IObserver<UdpMessage>>();
             _receivedUdpMessages = new Queue<UdpMessage>();
             // UDP Socket Listener/Sender initialization
             _socket = new UdpSocket();
@@ -104,8 +95,8 @@ namespace Assets.Scripts.Network
                 UdpMessage.DefaultFactory,
                 256,
                 new BusySpinWaitStrategy());
-            _receivedMessagePoller = _receivedMessageBuffer.NewPoller();
-            _receivedMessageBuffer.AddGatingSequences(_receivedMessagePoller.Sequence);
+            EventPoller<UdpMessage> receivedMessagePoller = _receivedMessageBuffer.NewPoller();
+            _receivedMessageBuffer.AddGatingSequences(receivedMessagePoller.Sequence);
 
             RingBuffer<OutgoingUdpMessage> outgoingMessageBuffer = RingBuffer<OutgoingUdpMessage>.Create(
                 ProducerType.Single,
@@ -138,29 +129,20 @@ namespace Assets.Scripts.Network
 
             _connectableUdpMessageStream = Observable.Create<UdpMessage>(observer =>
             {
-                IDisposable sub = Observable.EveryUpdate().Subscribe(_ =>
+                log.Debug("*********************** UDP NET BEHAVIOR - UdpMessage SUB ***************");
+
+                return Observable.EveryUpdate().Subscribe(_ =>
                 {
-                    _receivedMessagePoller.Poll(HandleMessagePollerEvent);
+                    receivedMessagePoller.Poll(HandleMessagePollerEvent);
 
                     for (int i = _receivedUdpMessages.Count; i > 0; i--)
                     {
                         observer.OnNext(_receivedUdpMessages.Dequeue());
                     }
                 });
-                return Disposable.Create(() => { sub.Dispose(); });
             }).Publish();
 
             _udpMessageStream = _connectableUdpMessageStream.RefCount();
-
-            // Creates a sequence from UdpMessages that will be polled for every frame
-            //_udpMessageStream = Observable.Create<UdpMessage>(observer =>
-            //{
-            //    Guid id = Guid.NewGuid(); // this prob isn't even necessary but not like i expect tons of observers
-            //    _observers[id] = observer;
-            //    return Disposable.Create(() => { _observers.Remove(id); });
-            //}).Publish();
-
-
 
         }
 
@@ -184,15 +166,6 @@ namespace Assets.Scripts.Network
             // Start thread that polls for outgoing udp messages and sends them on the socket
             _processOutgoing.Start(new object[] {_socketSender, _outgoingMessagePoller, _cancellationSource.Token});
 
-            TimeSpan timeoutCheckFrequency = TimeSpan.FromSeconds(CheckTimeoutFrequencySeconds);
-
-            // Start a timer that will perform update logic on the net manager
-            //Observable.Interval(timeoutCheckFrequency).Subscribe(_ => RNetManager.Update());
-
-            // Every update, poll for udp messages that were put into the ring buffer in the other threads
-            // and emit events for them
-            // Observable.EveryUpdate().Subscribe(_ => PollReceivedUdpMessagesAndFireEvents());
-
             _connectableUdpMessageStream.Connect();
         }
 
@@ -203,52 +176,7 @@ namespace Assets.Scripts.Network
             return true;
         }
 
-        private void PollReceivedUdpMessagesAndFireEvents()
-        {
-            _receivedMessagePoller.Poll(HandleMessagePollerEvent);
-
-            // ReSharper disable once PossibleNullReferenceException
-            int messageCount = _receivedUdpMessages.Count;
-            for (int i = 0; i < messageCount; i++)
-            {
-                UdpMessage msg = _receivedUdpMessages.Dequeue();
-                foreach (IObserver<UdpMessage> observer in _observers.Values)
-                {
-                    observer.OnNext(msg);
-                }
-            }
-        }
-
-        private IObservable<UdpMessage> GetUdpMessages()
-        {
-            return Observable.Create<UdpMessage>(observer =>
-            {
-                IDisposable subscription = Observable.EveryUpdate().Subscribe(
-                    _ =>
-                    {
-                        Debug.Log("Polling for messages!");
-
-                        // Poll all udp messages from the ring buffer and queue them up.. I thought about
-                        // calling observer.OnNext from inside the Poll function but I think that could end up
-                        // causing it to just always keep polling.. i could also limit the poll to stop going after a certain number of messages
-                        // could also use something like buffer or window maybe
-                        _receivedMessagePoller.Poll((message, sequence, endOfBatch) =>
-                        {
-                            _receivedUdpMessages.Enqueue(message);
-                            return true;
-                        });
-
-                        while (_receivedUdpMessages.Count > 0) observer.OnNext(_receivedUdpMessages.Dequeue());
-                    },
-                    observer.OnCompleted);
-
-                return Disposable.Create(() =>
-                {
-                    subscription.Dispose();
-                    subscription = null;
-                });
-            });
-        }
+       
 
         /// <summary>
         /// </summary>
