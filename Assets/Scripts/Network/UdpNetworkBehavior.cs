@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using AiUnity.NLog.Core;
@@ -12,7 +13,7 @@ using UnityEngine;
 
 namespace Assets.Scripts.Network
 {
-    public class UdpNetworkBehavior
+    public sealed class UdpNetworkBehavior
     {
         private readonly Queue<UdpMessage> _receivedUdpMessages;
         private readonly CancellationTokenSource _cancellationSource;
@@ -76,10 +77,18 @@ namespace Assets.Scripts.Network
         /// </summary>
         public bool ShouldConnect = false;
 
+        private readonly IConnectableObservable<UdpMessage> _connectableUdpMessageStream;
+
+        private readonly IObservable<UdpMessage> _udpMessageStream;
+
+        public IObservable<UdpMessage> UdpMessageStream => _udpMessageStream.AsObservable();
+
+        private readonly Dictionary<Guid,IObserver<UdpMessage>> _observers;
+
         public UdpNetworkBehavior()
         {
             NLogger log = NLogManager.Instance.GetLogger(this);
-
+            _observers = new Dictionary<Guid, IObserver<UdpMessage>>();
             _receivedUdpMessages = new Queue<UdpMessage>();
             // UDP Socket Listener/Sender initialization
             _socket = new UdpSocket();
@@ -127,33 +136,32 @@ namespace Assets.Scripts.Network
             for (int i = 0; i < MaxUdpMessagesPerFrame; i++)
                 batchedEvents[i] = new NetManagerEvent {EventId = NetManagerEvent.Event.UdpMessage};
 
-            IDisposable subscription = null;
-
-            // Establish a UdpMessage stream that will poll the ring buffer every update frame
-            // and pass them along to the subscriber. Only one subscriber for this stream but I imagine
-            // you could put something in between to enable multiple.. I have no use case for it yet tho 
-            NetEventStream = Observable.Create<NetEvent>(observer =>
+            _connectableUdpMessageStream = Observable.Create<UdpMessage>(observer =>
             {
-                 log.Info("Observer subscribed to NetEvent stream");
-
-                if (subscription != null) throw new Exception("MULTIPLE SUBSCRIBERS TO UDP MESSAGE STREAM!");
-
-                // TODO: If I want to disable this when this behavior gets disabled then add a Where clause with this.enabled == true
-                subscription = GetUdpMessages().Subscribe(msg =>
+                IDisposable sub = Observable.EveryUpdate().Subscribe(_ =>
                 {
-                    RNetManager.OnMsgReceived(msg.Buffer, msg.DataSize, msg.Endpoint);
+                    _receivedMessagePoller.Poll(HandleMessagePollerEvent);
 
-                    // TODO: reactive netmanager
-                    while (RNetManager.NetEventsQueue.Count > 0) observer.OnNext(RNetManager.NetEventsQueue.Dequeue());
-
+                    for (int i = _receivedUdpMessages.Count; i > 0; i--)
+                    {
+                        observer.OnNext(_receivedUdpMessages.Dequeue());
+                    }
                 });
+                return Disposable.Create(() => { sub.Dispose(); });
+            }).Publish();
 
-                return Disposable.Create(() =>
-                {
-                    subscription.Dispose();
-                    subscription = null;
-                });
-            });
+            _udpMessageStream = _connectableUdpMessageStream.RefCount();
+
+            // Creates a sequence from UdpMessages that will be polled for every frame
+            //_udpMessageStream = Observable.Create<UdpMessage>(observer =>
+            //{
+            //    Guid id = Guid.NewGuid(); // this prob isn't even necessary but not like i expect tons of observers
+            //    _observers[id] = observer;
+            //    return Disposable.Create(() => { _observers.Remove(id); });
+            //}).Publish();
+
+
+
         }
 
         public void Start()
@@ -179,7 +187,36 @@ namespace Assets.Scripts.Network
             TimeSpan timeoutCheckFrequency = TimeSpan.FromSeconds(CheckTimeoutFrequencySeconds);
 
             // Start a timer that will perform update logic on the net manager
-            Observable.Interval(timeoutCheckFrequency).Subscribe(_ => RNetManager.Update());
+            //Observable.Interval(timeoutCheckFrequency).Subscribe(_ => RNetManager.Update());
+
+            // Every update, poll for udp messages that were put into the ring buffer in the other threads
+            // and emit events for them
+            // Observable.EveryUpdate().Subscribe(_ => PollReceivedUdpMessagesAndFireEvents());
+
+            _connectableUdpMessageStream.Connect();
+        }
+
+  
+        private bool HandleMessagePollerEvent(UdpMessage message, long sequence, bool endOfBatch)
+        {
+            _receivedUdpMessages.Enqueue(message);
+            return true;
+        }
+
+        private void PollReceivedUdpMessagesAndFireEvents()
+        {
+            _receivedMessagePoller.Poll(HandleMessagePollerEvent);
+
+            // ReSharper disable once PossibleNullReferenceException
+            int messageCount = _receivedUdpMessages.Count;
+            for (int i = 0; i < messageCount; i++)
+            {
+                UdpMessage msg = _receivedUdpMessages.Dequeue();
+                foreach (IObserver<UdpMessage> observer in _observers.Values)
+                {
+                    observer.OnNext(msg);
+                }
+            }
         }
 
         private IObservable<UdpMessage> GetUdpMessages()

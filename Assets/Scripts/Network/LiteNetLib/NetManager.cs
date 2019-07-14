@@ -122,7 +122,7 @@ namespace LiteNetLib
      
         private Thread _logicThread;
 
-        internal Queue<NetEvent> NetEventsQueue { get; private set; }
+        public Queue<NetEvent> NetEventsQueue { get; private set; }
         private readonly Stack<NetEvent> _netEventsPool;
         private readonly INetEventListener _netEventListener;
         private readonly IAsyncUdpMessageSender _udpMessageSender;

@@ -11,11 +11,6 @@ using UnityEngine;
 
 namespace Assets.Scripts.Network.StreamSystems
 {
-    public interface IUnreliablePacketSender
-    {
-        void Send(byte[] data, int offset, int size);
-    }
-
     public class PacketStreamSystem : IPacketStreamSystem
     {
         // This streams current sequence

@@ -6,31 +6,31 @@ using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
 using KinematicCharacterController;
 using LiteNetLib;
-using Opsive.UltimateCharacterController.Character;
+using UniRx;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Assets.Scripts
 {
-    public class GameServerReactor : NetEventReactor
+    public class GameServerRx : NetEventReactor
     {
         private readonly Stack<int> _entityIds;
         private readonly NLogger _log;
 
 
-        public GameObject ClientPrefab;
+        private readonly GameObject _clientPrefab;
 
         public Dictionary<int, GameClient> Clients;
 
         public GameObject[] Entities;
 
-        public GameObject EntityPrefab;
-
         public ReplicatableGameObject[] REntities;
 
-        public GameServerReactor()
+        public GameServerRx(NetManager netManager, IObservable<NetEvent> eventStream, GameObject entityPrefab, GameObject clientPrefab)
         {
             _log = NLogManager.Instance.GetLogger(this);
+            _clientPrefab = clientPrefab;
+            RNetManager = netManager;
 
             Entities = new GameObject[100];
             REntities = new ReplicatableGameObject[100];
@@ -40,10 +40,7 @@ namespace Assets.Scripts
             for (int i = 99; i >= 0; i--) _entityIds.Push(i);
 
             Clients = new Dictionary<int, GameClient>();
-        }
 
-        public void Initialize()
-        {
             KinematicCharacterSystem.AutoSimulation = false;
             KinematicCharacterSystem.Interpolate = false;
             KinematicCharacterSystem.EnsureCreation();
@@ -51,43 +48,59 @@ namespace Assets.Scripts
             // add a couple -- this is not where this would normally be ofc
             for (int i = 0; i < 10; i++)
             {
-                Entities[i] = Object.Instantiate(EntityPrefab, new Vector3(0, (i + 1) * 10, 0), new Quaternion());
+                Entities[i] = Object.Instantiate(entityPrefab, new Vector3(0, (i + 1) * 10, 0), new Quaternion());
                 REntities[i] = new ReplicatableGameObject();
             }
-        }
 
-        public override void React(GameEvent evt)
-        {
-            switch (evt.EventId)
+            // React to the NetEvent stream
+            eventStream.Subscribe(evt =>
             {
-                case GameEvent.Event.NetEvent:
-                    React(evt.NetEvent);
-                    break;
-                case GameEvent.Event.Update:
-                    Update();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+                switch (evt.Type)
+                {
+                    case NetEvent.EType.Connect:
+                        OnConnect(evt);
+                        break;
+                    case NetEvent.EType.Disconnect:
+                        break;
+                    case NetEvent.EType.Receive:
+                        OnReceive(evt);
+                        break;
+                    case NetEvent.EType.ReceiveUnconnected:
+                        break;
+                    case NetEvent.EType.Error:
+                        break;
+                    case NetEvent.EType.ConnectionLatencyUpdated:
+                        break;
+                    case NetEvent.EType.DiscoveryRequest:
+                        break;
+                    case NetEvent.EType.DiscoveryResponse:
+                        break;
+                    case NetEvent.EType.ConnectionRequest:
+                        OnConnectionRequest(evt);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            });
+
+            Observable.EveryFixedUpdate().Subscribe(_ => Update());
         }
 
-        public void Update()
+        private static void OnConnectionRequest(NetEvent evt)
+        {
+            Debug.Log("ACCEPTING CONNECTION REQUEST!");
+            evt.ConnectionRequest.Accept();
+        }
+
+
+        private void Update()
         {
             _log.Debug($"{Time.frameCount}: STARTED UPDATE");
             
-            //foreach (var gc in Clients.Values)
-            //{
-            //    gc.ControlledObjectSys.CurrentlyControlledObject.ApplyMoveDirection(0, 0);
-            //}
-
             Clients_UpdateIncomingPacketStream();
 
             if (KinematicCharacterSystem.CharacterMotors.Count > 0)
             {
-
-
-                //KinematicCharacterSystem.PreSimulationInterpolationUpdate(Time.fixedDeltaTime);
-
                 // update game
                 KinematicCharacterSystem.Simulate(
                     Time.fixedDeltaTime,
@@ -95,10 +108,7 @@ namespace Assets.Scripts
                     KinematicCharacterSystem.CharacterMotors.Count,
                     KinematicCharacterSystem.PhysicsMovers,
                     KinematicCharacterSystem.PhysicsMovers.Count);
-
-                //KinematicCharacterSystem.PostSimulationInterpolationUpdate(Time.fixedDeltaTime);
             }
-
             
             for (int i = 0; i < 10; i++)
             {
@@ -125,45 +135,15 @@ namespace Assets.Scripts
         {
             foreach (GameClient gc in Clients.Values) gc.PacketStream.UpdateOutgoing(true);
         }
-
-        public void React(NetEvent evt)
-        {
-            switch (evt.Type)
-            {
-                case NetEvent.EType.ConnectionRequest:
-                    evt.ConnectionRequest.Accept(); // who needs security
-                    break;
-                case NetEvent.EType.Connect:
-                    HandleNewConnection(evt);
-                    break;
-                case NetEvent.EType.Receive:
-                    HandleNetworkReceive(evt);
-                    break;
-                case NetEvent.EType.Disconnect:
-                    break;
-                case NetEvent.EType.ReceiveUnconnected:
-                    break;
-                case NetEvent.EType.Error:
-                    break;
-                case NetEvent.EType.ConnectionLatencyUpdated:
-                    break;
-                case NetEvent.EType.DiscoveryRequest:
-                    break;
-                case NetEvent.EType.DiscoveryResponse:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-
-        private void HandleNetworkReceive(NetEvent evt)
+        
+        private void OnReceive(NetEvent evt)
         {
             GameClient gc = Clients[evt.Peer.Id];
 
             gc.PacketStream.AddDataReceivedEvent(evt);
         }
 
-        private void HandleNewConnection(NetEvent evt)
+        private void OnConnect(NetEvent evt)
         {
             // Need an entity in the game world..
             int nextEntityId = _entityIds.Pop();
@@ -174,16 +154,16 @@ namespace Assets.Scripts
                 EntityId = nextEntityId
             };
 
-            GameObject clientGameObj = Object.Instantiate(ClientPrefab);
+            GameObject clientGameObj = Object.Instantiate(_clientPrefab);
 
-            var kcc = new KccControlledObject
+            KccControlledObject kcc = new KccControlledObject
             {
                 Entity = clientGameObj,
                 PlayerController = clientGameObj.GetComponent<CharacterController>(),
                 Controller = clientGameObj.GetComponent<MyCharacterController>()
             };
 
-            kcc.Controller.Motor.SetPosition(new Vector3(0,2,0));
+            kcc.Controller.Motor.SetPosition(new Vector3(0, 2, 0));
 
             client.ControlledObjectSys.CurrentlyControlledObject = kcc;
 
@@ -191,7 +171,7 @@ namespace Assets.Scripts
 
             for (int i = 0; i < 10; i++) client.Replication.StartReplicating(REntities[i]);
 
-            _log.Debug("Got new connection!");
+         
         }
     }
 }
