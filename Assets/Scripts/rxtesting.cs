@@ -45,7 +45,12 @@ namespace Assets.Scripts
 
         private event HandleMessage NextMessage;
 
-
+        private enum States
+        {
+            A,
+            B,
+            C
+        }
 
         
 
@@ -53,7 +58,33 @@ namespace Assets.Scripts
         void Start()
         {
 
-            Observable.Timer(DateTimeOffset.Now, TimeSpan.FromMilliseconds(10)).Subscribe(_ => Debug.Log("TIMER TICKIN"));
+            //Observable.Timer(DateTimeOffset.Now, TimeSpan.FromMilliseconds(10)).Subscribe(_ => Debug.Log("TIMER TICKIN"));
+
+            IConnectableObservable<States> connSeq = Observable.Create<States>(obs =>
+            {
+                return Observable.EveryFixedUpdate().Subscribe(_ =>
+                    {
+                        obs.OnNext(States.A);
+                        obs.OnNext(States.B);
+                        obs.OnNext(States.C);
+                    });
+
+                
+            }).Publish();
+
+            var a = connSeq.Where(s => s == States.A);
+
+            a.Subscribe(_ =>
+                Debug.Log("ASS"));
+            a.Subscribe(_ =>
+                Debug.Log("APPLE"));
+
+            var b = connSeq.Where(s => s == States.B);
+
+            b.Subscribe(_ => Debug.Log("BITCH"));
+            b.Subscribe(_ => Debug.Log("BALLS"));
+
+            connSeq.Connect();
 
             //Queue<Testin> messages = new Queue<Testin>();
 
@@ -159,7 +190,7 @@ namespace Assets.Scripts
         void Update()
         {
 
-            Debug.Log("STARTED UPDATE WAIT");
+            //Debug.Log("STARTED UPDATE WAIT");
             //Task.Delay(1000).Wait();
             //Debug.Log("STOPPED WAIT");
 

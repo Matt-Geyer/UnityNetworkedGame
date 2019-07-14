@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using AiUnity.NLog.Core;
 using Assets.Scripts.CharacterControllerStuff;
 using Assets.Scripts.Network;
@@ -21,6 +22,13 @@ namespace Assets.Scripts
         //public GameObject EntityPrefab;
         public GameObject PlayerPrefab;
 
+        private enum FixedUpdateLoopEvents
+        {
+            Physics,
+            Input,
+            Reconcile
+        }
+
         // Start is called before the first frame update
         // ReSharper disable once UnusedMember.Local
         private void Start()
@@ -31,8 +39,24 @@ namespace Assets.Scripts
             KinematicCharacterSystem.Interpolate = false;
             KinematicCharacterSystem.EnsureCreation();
 
-            Observable.EveryFixedUpdate().Subscribe(_ =>
+            var connFuEvents = Observable.Create<FixedUpdateLoopEvents>(observer =>
             {
+                return Observable.EveryFixedUpdate().Subscribe(_ =>
+                {
+                    observer.OnNext(FixedUpdateLoopEvents.Input);
+                    observer.OnNext(FixedUpdateLoopEvents.Reconcile);
+                    observer.OnNext(FixedUpdateLoopEvents.Physics);
+                });
+            }).Publish();
+
+            var handleInputSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Input);
+            var handleReconcileSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Reconcile);
+            var handlePhysicsSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Physics);
+            
+            handlePhysicsSignal.Subscribe(_ =>
+            {
+                Debug.Log($"***************************** PHYSICS: {Time.frameCount} ***********************");
+
                 // Update physics
                 KinematicCharacterSystem.Simulate(
                     Time.fixedDeltaTime,
@@ -49,7 +73,7 @@ namespace Assets.Scripts
             };
 
             IConnectableObservable<long> connGeneratePacketEvents =
-                Observable.EveryLateUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
+                Observable.EveryUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
 
             IObservable<long> generatePacketEvents = connGeneratePacketEvents.RefCount();
 
@@ -83,9 +107,21 @@ namespace Assets.Scripts
                     //_client.ControlledObjectSys.CurrentlyControlledObject = pco;
                     kccClient.CurrentlyControlledObject = pco;
 
-                    Observable.EveryFixedUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Subscribe(_ =>
+                    handleInputSignal.Subscribe(_ =>
                     {
+                        Debug.Log($"*************** INPUT: {Time.frameCount}  ******************");
                         kccClient.UpdateControlledObject();
+                    });
+
+                    Queue<ControlledObjectServerEvent> updateQueue = new Queue<ControlledObjectServerEvent>();
+
+                    handleReconcileSignal.Subscribe(_ =>
+                    {
+                        Debug.Log($"*************** RECONCILE: {Time.frameCount} -- {updateQueue.Count} SERVER UPDATES******************");
+                        for (int i =  updateQueue.Count; i > 0; i--)
+                        {
+                            kccClient.FixedUpdate_ServerReconcile(updateQueue.Dequeue());
+                        }
                     });
 
                     PacketStreamRx psRx = new PacketStreamRx(
@@ -101,8 +137,7 @@ namespace Assets.Scripts
                         .BatchFrame(0, FrameCountType.FixedUpdate)
                         .Subscribe(serverUpdates =>
                         {
-                            Debug.Log($"************ RUNNING {serverUpdates.Count} SERVER UPDATES *****************");
-                            for (int i = 0; i < serverUpdates.Count; i++) kccClient.FixedUpdate_ServerReconcile(serverUpdates[i]);
+                            for (int i = 0; i < serverUpdates.Count; i++) updateQueue.Enqueue(serverUpdates[i]);
                         });
 
                     psRx.OutgoingPacketStream
@@ -125,7 +160,7 @@ namespace Assets.Scripts
 
             _network.Start();
             netRx.Start();
-
+            connFuEvents.Connect();
             connGeneratePacketEvents.Connect();
         }
     }

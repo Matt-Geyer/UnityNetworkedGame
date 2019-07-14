@@ -33,27 +33,23 @@ namespace Assets.Scripts
                 ShouldBind = true
             };
 
-
             KinematicCharacterSystem.AutoSimulation = false;
             KinematicCharacterSystem.Interpolate = false;
             KinematicCharacterSystem.EnsureCreation();
 
             Observable.EveryFixedUpdate().Subscribe(_ =>
             {
-                if (KinematicCharacterSystem.CharacterMotors.Count > 0)
-                {
-                    // update kinematic character physics
-                    KinematicCharacterSystem.Simulate(
-                        Time.fixedDeltaTime,
-                        KinematicCharacterSystem.CharacterMotors,
-                        KinematicCharacterSystem.CharacterMotors.Count,
-                        KinematicCharacterSystem.PhysicsMovers,
-                        KinematicCharacterSystem.PhysicsMovers.Count);
-                }
+                // update kinematic character physics
+                KinematicCharacterSystem.Simulate(
+                    Time.fixedDeltaTime,
+                    KinematicCharacterSystem.CharacterMotors,
+                    KinematicCharacterSystem.CharacterMotors.Count,
+                    KinematicCharacterSystem.PhysicsMovers,
+                    KinematicCharacterSystem.PhysicsMovers.Count);
             });
 
             IConnectableObservable<long> connGeneratePacketEvents =
-                Observable.EveryLateUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
+                Observable.EveryUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
 
             IObservable<long> generatePacketEvents = connGeneratePacketEvents.RefCount();
 
@@ -89,7 +85,13 @@ namespace Assets.Scripts
 
                     kcc.Controller.Motor.SetPosition(new Vector3(0, 2, 0));
 
-                    client.ControlledObjectSys.CurrentlyControlledObject = kcc;
+                    KccControlledObjectSystemServer kccServer = new KccControlledObjectSystemServer
+                    {
+                        CurrentlyControlledObject = kcc
+                    };
+
+
+                    //client.ControlledObjectSys.CurrentlyControlledObject = kcc;
                     
                     // could add this to a merge that the server subscribes to which groups all the client events 
 
@@ -98,23 +100,19 @@ namespace Assets.Scripts
                         Observable.EveryUpdate(),
                         generatePacketEvents);
 
-                    // The order of these subscription sort of matters, or at least has implications that are sort of hidden 
-                    // by this packet stream reactor.. so i might need to pull that out 
                     psRx.GamePacketStream
                         .Do(_ => _log.Debug("Received game packet stream event"))
-                        .Subscribe(stream =>
-                    {
-                        client.ControlledObjectSys.ReadPacketStream(stream);
-                        //client.Replication.ReadPacketStream(stream);
-                    });
+                        .Select(kccServer.GetClientEventFromStream)
+                        //.BatchFrame(0, FrameCountType.FixedUpdate)
+                        .Subscribe(controlledObjEvent => { kccServer.HandleClientEvent(controlledObjEvent); });
 
                     psRx.OutgoingPacketStream
                         .Do(_ => _log.Debug("Writing to packet stream"))
                         .Subscribe(stream =>
-                    {
-                        client.ControlledObjectSys.WriteToPacketStream(stream);
-                        client.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
-                    });
+                        {
+                            kccServer.WriteToPacketStream(stream);
+                            client.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
+                        });
 
                     psRx.TransmissionNotificationStream
                         .Do(not => _log.Debug($"Next notification: {not}"))
@@ -125,9 +123,6 @@ namespace Assets.Scripts
 
                     psRx.Start();
                 });
-
-            //GameServerRx reactor =
-            //    new GameServerRx(_network.RNetManager, _network.NetEventStream, ObjectPrefab, PlayerPrefab);
 
             // Start network thread
             _network.Start();
