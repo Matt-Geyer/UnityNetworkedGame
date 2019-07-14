@@ -41,8 +41,6 @@ namespace Assets.Scripts
                     KinematicCharacterSystem.PhysicsMovers.Count);
             });
 
-            
-
             _currentState = State.Connecting;
 
             _network = new UdpNetworkBehavior
@@ -80,13 +78,16 @@ namespace Assets.Scripts
                         Controller = playerObj.GetComponent<MyCharacterController>()
                     };
 
+                    KccControlledObjectSystemClient kccClient = new KccControlledObjectSystemClient();
+
                     pco.Controller.Motor.SetPosition(new Vector3(0, 2, 0));
 
-                    _client.ControlledObjectSys.CurrentlyControlledObject = pco;
+                    //_client.ControlledObjectSys.CurrentlyControlledObject = pco;
+                    kccClient.CurrentlyControlledObject = pco;
 
                     Observable.EveryUpdate().Sample(TimeSpan.FromMilliseconds(Time.fixedDeltaTime)).Subscribe(_ =>
                     {
-                        _client.ControlledObjectSys.UpdateControlledObject();
+                        kccClient.UpdateControlledObject();
                     });
 
                     PacketStreamRx psRx = new PacketStreamRx(
@@ -98,17 +99,19 @@ namespace Assets.Scripts
                     // by this packet stream reactor.. so i might need to pull that out 
                     psRx.GamePacketStream
                         .Do(_ => _log.Debug("Received game packet stream event"))
-                        .Subscribe(stream =>
-                    {
-                        _client.ControlledObjectSys.ReadPacketStream(stream);
-                        //client.Replication.ReadPacketStream(stream);
-                    });
+                        .Select(kccClient.GetControlledObjectEventFromStream)
+                        .BatchFrame(0, FrameCountType.FixedUpdate)
+                        .Subscribe(serverUpdates =>
+                        {
+                            Debug.Log($"************ RUNNING {serverUpdates.Count} SERVER UPDATES *****************");
+                            for (int i = 0; i < serverUpdates.Count; i++) kccClient.FixedUpdate_ServerReconcile(serverUpdates[i]);
+                        });
 
                     psRx.OutgoingPacketStream
                         .Do(_ => _log.Debug("Writing to packet stream"))
                         .Subscribe(stream =>
                     {
-                        _client.ControlledObjectSys.WriteToPacketStream(stream);
+                        kccClient.WriteToPacketStream(stream);
                         _client.Peer.Send(stream.Data,0, stream.Length, DeliveryMethod.Unreliable);
                     });
 

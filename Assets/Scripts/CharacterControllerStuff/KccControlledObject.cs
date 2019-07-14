@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using AiUnity.NLog.Core;
 using Assets.Scripts.Network.StreamSystems;
 using KinematicCharacterController;
@@ -46,7 +48,7 @@ namespace Assets.Scripts.CharacterControllerStuff
 
             // Send state of all pco that are being replicated by this system
         }
-
+        
         public override void ReadPacketStream(NetDataReader stream)
         {
             // The players last 3 moves are always transmitted with the last move being the most recent
@@ -150,6 +152,99 @@ namespace Assets.Scripts.CharacterControllerStuff
                 _window.GetNextAvailable(),
                 _window.GetNextAvailable()
             };
+        }
+
+        public struct ControlledObjectEvent
+        {
+            public ushort SeqLastProcessed;
+            public KinematicCharacterMotorState MotorState;
+        }
+
+        public ControlledObjectEvent GetControlledObjectEventFromStream(NetDataReader stream)
+        {
+            ControlledObjectEvent frame = new ControlledObjectEvent
+            {
+                SeqLastProcessed = stream.GetUShort()
+            };
+            DeserializeMotorState(ref frame.MotorState, stream);
+            return frame;
+        }
+
+        public void FixedUpdate_ServerReconcile(ControlledObjectEvent serverUpdate)
+        {
+            SeqLastProcessed = serverUpdate.SeqLastProcessed;
+
+            _log.Debug($"SeqLastProcessed from server: {SeqLastProcessed}");
+
+            var stateAtSequence = _simpleWindow.AckSequence((ushort)SeqLastProcessed);
+
+            KccControlledObject kcc = (KccControlledObject)CurrentlyControlledObject;
+
+            List<KinematicCharacterMotor> motors = new List<KinematicCharacterMotor> { kcc.Controller.Motor };
+
+            if (_simpleWindow.Items.Count <= 0 || stateAtSequence == null) return;
+
+            Vector3 difference = stateAtSequence.MotorState.Position - serverUpdate.MotorState.Position;
+
+            var cs = kcc.Controller.Motor.GetState();
+            float distance = difference.magnitude;
+
+            _log.Debug($"Sequence: {stateAtSequence.Seq} SeqLastProcessed: {SeqLastProcessed}");
+            _log.Debug($"Server Position: ({serverUpdate.MotorState.Position.x},{serverUpdate.MotorState.Position.y},{serverUpdate.MotorState.Position.z})");
+            _log.Debug($"Client Position: ({stateAtSequence.MotorState.Position.x},{stateAtSequence.MotorState.Position.y},{stateAtSequence.MotorState.Position.z})");
+            _log.Debug($"Distance: {distance}");
+
+            if (distance > 2)
+            {
+                // correct
+                cs.Position = serverUpdate.MotorState.Position;
+                cs.AttachedRigidbodyVelocity = serverUpdate.MotorState.AttachedRigidbodyVelocity;
+                cs.BaseVelocity = serverUpdate.MotorState.BaseVelocity;
+
+                kcc.Controller.Motor.ApplyState(cs);
+
+                // clear input window?
+                _simpleWindow.Items.Clear();
+            }
+            else if (distance > .05)
+            {
+                stateAtSequence.MotorState.Position = serverUpdate.MotorState.Position;
+                stateAtSequence.MotorState.AttachedRigidbodyVelocity = serverUpdate.MotorState.AttachedRigidbodyVelocity;
+                stateAtSequence.MotorState.BaseVelocity = serverUpdate.MotorState.BaseVelocity;
+
+                kcc.Controller.Motor.ApplyState(stateAtSequence.MotorState);
+                //kcc.ApplyMoveDirection(stateAtSequence.UserInput.MoveDirection.z, stateAtSequence.UserInput.MoveDirection.x);
+
+                //KinematicCharacterSystem.Simulate(Time.fixedDeltaTime, motors, 1, null, 0);
+
+                for (int i = 0; i < _simpleWindow.Items.Count; i++)
+                {
+                    UserInputSample input = _simpleWindow.Items[i].UserInput;
+
+                    CurrentlyControlledObject.ApplyMoveDirection(input.MoveDirection.z, input.MoveDirection.x);
+
+                    KinematicCharacterSystem.Simulate(Time.fixedDeltaTime, motors, 1, null, 0);
+                }
+
+                // what is distance between what we actually are and what we now calculate we should be at
+                KinematicCharacterMotorState predictedState = kcc.Controller.Motor.GetState();
+                Vector3 difVector3 = predictedState.Position - cs.Position;
+
+                DebugGraph.Log("Prediction Mismatch", difVector3.magnitude);
+
+                if (difVector3.magnitude >= .01)
+                {
+                    cs.Position += difVector3 * 0.1f;
+                }
+                else
+                {
+                    //cs.Position = predictedState.Position;
+                }
+
+                kcc.Controller.Motor.ApplyState(cs);
+                //kcc.Controller.Motor.SetPosition(cs.Position);
+
+            }
         }
 
         public override void ReadPacketStream(NetDataReader stream)
@@ -274,6 +369,9 @@ namespace Assets.Scripts.CharacterControllerStuff
             // Update packets to transmit 
             _playerInputsToTransmit.RemoveAt(0);
             _playerInputsToTransmit.Add(nextSample);
+
+            _log.Debug($"******** PLAYER INPUTS SEQ: {_playerInputsToTransmit.Last().Seq}");
+
         }
     }
 
