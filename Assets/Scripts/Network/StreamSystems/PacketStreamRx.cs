@@ -24,7 +24,7 @@ namespace Assets.Scripts.Network.StreamSystems
         // data blocks
     }
 
-    public sealed class PacketStreamRx
+    public sealed class PacketStreamRx : IDisposable
     {
         // Information about sent packets stored in the order they were sent and expected to be processed in order
         private readonly Queue<PacketTransmissionRecord> _transmissionRecords;
@@ -268,6 +268,11 @@ namespace Assets.Scripts.Network.StreamSystems
                 return null;
             }
             return reader;
+        }
+
+        public void Dispose()
+        {
+
         }
     }
 }

@@ -81,8 +81,6 @@ namespace Assets.Scripts.CharacterControllerStuff
 
         public void FixedUpdate_ServerReconcile(ControlledObjectServerEvent serverUpdate)
         {
-            Debug.Log("********************** FIXED UPDATE SERVER RECONCILE *******************************");
-
             SeqLastProcessed = serverUpdate.SeqLastProcessed;
 
             _log.Debug($"SeqLastProcessed from server: {SeqLastProcessed}");

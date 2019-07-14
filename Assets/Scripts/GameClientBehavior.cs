@@ -14,48 +14,57 @@ namespace Assets.Scripts
     public class GameClientBehavior : MonoBehaviour
     {
         private GameClient _client;
- 
-        private NLogger _log;
 
-        private UdpNetworkBehavior _network;
+        private NLogger _log;
+        private NetManager _netManager;
+        private TimeSpan _timeoutCheckFrequency;
+        private UdpServer _udpRx;
+
+        /// <summary>
+        ///     The host to connect to
+        /// </summary>
+        public string ConnectAddress = "127.0.0.1";
+
+        /// <summary>
+        ///     The port to connect to
+        /// </summary>
+        public int ConnectPort = 40069;
 
         //public GameObject EntityPrefab;
         public GameObject PlayerPrefab;
-
-        private enum FixedUpdateLoopEvents
-        {
-            Physics,
-            Input,
-            Reconcile
-        }
 
         // Start is called before the first frame update
         // ReSharper disable once UnusedMember.Local
         private void Start()
         {
             _log = NLogManager.Instance.GetLogger(this);
-
+            _timeoutCheckFrequency = TimeSpan.FromSeconds(5);
             KinematicCharacterSystem.AutoSimulation = false;
             KinematicCharacterSystem.Interpolate = false;
             KinematicCharacterSystem.EnsureCreation();
 
-            var connFuEvents = Observable.Create<FixedUpdateLoopEvents>(observer =>
-            {
-                return Observable.EveryFixedUpdate().Subscribe(_ =>
+            IConnectableObservable<FixedUpdateLoopEvents> connFixedUpdateEventStream = Observable
+                .Create<FixedUpdateLoopEvents>(observer =>
                 {
-                    observer.OnNext(FixedUpdateLoopEvents.Input);
-                    observer.OnNext(FixedUpdateLoopEvents.Reconcile);
-                    observer.OnNext(FixedUpdateLoopEvents.Physics);
-                });
-            }).Publish();
+                    return Observable.EveryFixedUpdate().Subscribe(_ =>
+                    {
+                        // This defines the order of the events in each fixed update loop
+                        observer.OnNext(FixedUpdateLoopEvents.Input);
+                        observer.OnNext(FixedUpdateLoopEvents.Reconcile);
+                        observer.OnNext(FixedUpdateLoopEvents.Physics);
+                    });
+                }).Publish();
 
-            var handleInputSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Input);
-            var handleReconcileSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Reconcile);
-            var handlePhysicsSignal = connFuEvents.Where(s => s == FixedUpdateLoopEvents.Physics);
-            
-            handlePhysicsSignal.Subscribe(_ =>
+            IObservable<FixedUpdateLoopEvents> inputFixedUpdateEvents =
+                connFixedUpdateEventStream.Where(s => s == FixedUpdateLoopEvents.Input);
+            IObservable<FixedUpdateLoopEvents> reconcileFixedUpdateEvents =
+                connFixedUpdateEventStream.Where(s => s == FixedUpdateLoopEvents.Reconcile);
+            IObservable<FixedUpdateLoopEvents> physicsFixedUpdateEvents =
+                connFixedUpdateEventStream.Where(s => s == FixedUpdateLoopEvents.Physics);
+
+            physicsFixedUpdateEvents.Subscribe(_ =>
             {
-                Debug.Log($"***************************** PHYSICS: {Time.frameCount} ***********************");
+                //Debug.Log($"***************************** PHYSICS: {Time.frameCount} ***********************");
 
                 // Update physics
                 KinematicCharacterSystem.Simulate(
@@ -66,10 +75,9 @@ namespace Assets.Scripts
                     KinematicCharacterSystem.PhysicsMovers.Count);
             });
 
-            _network = new UdpNetworkBehavior
+            _udpRx = new UdpServer
             {
-                ShouldBind = false,
-                ShouldConnect = true
+                BindPort = 9090
             };
 
             IConnectableObservable<long> connGeneratePacketEvents =
@@ -77,18 +85,35 @@ namespace Assets.Scripts
 
             IObservable<long> generatePacketEvents = connGeneratePacketEvents.RefCount();
 
-            NetManagerRx netRx = new NetManagerRx(_network.RNetManager, _network.UdpMessageStream);
+            _netManager = new NetManager(null) {DisconnectTimeout = 5};
+
+            IDisposable connectSub = Observable.EveryUpdate()
+                .Sample(TimeSpan.FromSeconds(1))
+                .Do(_ => Debug.Log("Trying to connect"))
+                .Subscribe(_ => _netManager.Connect(ConnectAddress, ConnectPort, "somekey"));
+
+            NetManagerRx netRx = new NetManagerRx(_netManager, _udpRx.UdpMessageStream);
+
+            Observable.EveryLateUpdate().Sample(_timeoutCheckFrequency).Subscribe(_ => { _netManager.Update(); });
+
+            _netManager.UdpSendEvents
+                .Subscribe(e =>
+                {
+                    _udpRx.OutgoingUdpMessageSender.Send(e.Message, e.Start, e.Length, e.RemoteEndPoint,
+                        UdpSendType.SendTo);
+                });
 
             IObservable<NetEvent> receivedDataStream =
                 netRx.ReceivedNetEventStream
-                    .Where(evt => evt.Type == NetEvent.EType.Receive)
-                    .Do(_ => _log.Debug($"Received data: {_.DataReader.RawDataSize}"));
+                    .Where(evt => evt.Type == NetEvent.EType.Receive);
 
             netRx.ReceivedNetEventStream
                 .Where(evt => evt.Type == NetEvent.EType.Connect)
-                .Do(_ => _log.Info("Connected to server"))
+                .Do(_ => _log.Info($"Connected to server with ID: {_.Peer.Id}"))
                 .Subscribe(evt =>
                 {
+                    connectSub.Dispose();
+
                     _client = new GameClient(evt.Peer, false);
 
                     GameObject playerObj = Instantiate(PlayerPrefab);
@@ -107,21 +132,14 @@ namespace Assets.Scripts
                     //_client.ControlledObjectSys.CurrentlyControlledObject = pco;
                     kccClient.CurrentlyControlledObject = pco;
 
-                    handleInputSignal.Subscribe(_ =>
-                    {
-                        Debug.Log($"*************** INPUT: {Time.frameCount}  ******************");
-                        kccClient.UpdateControlledObject();
-                    });
+                    inputFixedUpdateEvents.Subscribe(_ => { kccClient.UpdateControlledObject(); });
 
                     Queue<ControlledObjectServerEvent> updateQueue = new Queue<ControlledObjectServerEvent>();
 
-                    handleReconcileSignal.Subscribe(_ =>
+                    reconcileFixedUpdateEvents.Subscribe(_ =>
                     {
-                        Debug.Log($"*************** RECONCILE: {Time.frameCount} -- {updateQueue.Count} SERVER UPDATES******************");
-                        for (int i =  updateQueue.Count; i > 0; i--)
-                        {
+                        for (int i = updateQueue.Count; i > 0; i--)
                             kccClient.FixedUpdate_ServerReconcile(updateQueue.Dequeue());
-                        }
                     });
 
                     PacketStreamRx psRx = new PacketStreamRx(
@@ -132,7 +150,6 @@ namespace Assets.Scripts
                     // The order of these subscription sort of matters, or at least has implications that are sort of hidden 
                     // by this packet stream reactor.. so i might need to pull that out 
                     psRx.GamePacketStream
-                        .Do(_ => _log.Debug("Received game packet stream event"))
                         .Select(kccClient.GetControlledObjectEventFromStream)
                         .BatchFrame(0, FrameCountType.FixedUpdate)
                         .Subscribe(serverUpdates =>
@@ -141,15 +158,13 @@ namespace Assets.Scripts
                         });
 
                     psRx.OutgoingPacketStream
-                        .Do(_ => _log.Debug("Writing to packet stream"))
                         .Subscribe(stream =>
-                    {
-                        kccClient.WriteToPacketStream(stream);
-                        _client.Peer.Send(stream.Data,0, stream.Length, DeliveryMethod.Unreliable);
-                    });
+                        {
+                            kccClient.WriteToPacketStream(stream);
+                            _client.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
+                        });
 
                     psRx.TransmissionNotificationStream
-                        .Do(not => _log.Debug($"Next notification: {not}"))
                         .Subscribe(notification =>
                         {
                             //client.Replication.ReceiveNotification(notification);
@@ -158,10 +173,19 @@ namespace Assets.Scripts
                     psRx.Start();
                 });
 
-            _network.Start();
+
+            _netManager.StartUdpSendEvents();
+            _udpRx.Start();
             netRx.Start();
-            connFuEvents.Connect();
+            connFixedUpdateEventStream.Connect();
             connGeneratePacketEvents.Connect();
+        }
+
+        private enum FixedUpdateLoopEvents
+        {
+            Physics,
+            Input,
+            Reconcile
         }
     }
 }

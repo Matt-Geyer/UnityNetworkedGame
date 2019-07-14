@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Threading;
 using Assets.Scripts.Network;
 using LiteNetLib.Utils;
+using UniRx;
 
 namespace LiteNetLib
 {
@@ -88,6 +89,14 @@ namespace LiteNetLib
         }
     }
 
+    public class UdpSendEvent
+    {
+        public byte[] Message;
+        public int Start;
+        public int Length;
+        public IPEndPoint RemoteEndPoint;
+    }
+    
     /// <summary>
     /// Main class for all network operations. Can be used as client and/or server.
     /// </summary>
@@ -125,7 +134,29 @@ namespace LiteNetLib
         public Queue<NetEvent> NetEventsQueue { get; private set; }
         private readonly Stack<NetEvent> _netEventsPool;
         private readonly INetEventListener _netEventListener;
-        private readonly IAsyncUdpMessageSender _udpMessageSender;
+        //private readonly IAsyncUdpMessageSender _udpMessageSender;
+
+        public IObservable<UdpSendEvent> UdpSendEvents;
+
+        private delegate void HandleUdpSendEvent(UdpSendEvent evt);
+
+        private event HandleUdpSendEvent NextUdpEvent;
+
+        private class UdpSendObserver
+        {
+            private readonly IObserver<UdpSendEvent> _observer;
+
+            public UdpSendObserver(IObserver<UdpSendEvent> observer)
+            {
+                _observer = observer;
+            }
+
+            public void OnUdpSendEvent(UdpSendEvent evt)
+            {
+                _observer.OnNext(evt);
+            }
+        }
+
 
         private readonly Dictionary<IPEndPoint, NetPeer> _peersDict;
         //private readonly ReaderWriterLockSlim _peersLock;
@@ -242,6 +273,7 @@ namespace LiteNetLib
         /// </summary>
         public bool AutoRecycle;
 
+        private IConnectableObservable<UdpSendEvent> _connUdpSendEvents;
 
 
         /// <summary>
@@ -348,11 +380,29 @@ namespace LiteNetLib
             _peersDict = new Dictionary<IPEndPoint, NetPeer>(new IPEndPointComparer());
             //_peersLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
             _peerIds = new Queue<int>();
+
+            _connUdpSendEvents = Observable.Create<UdpSendEvent>(observer =>
+            {
+                UdpSendObserver obs = new UdpSendObserver(observer);
+
+                NextUdpEvent += obs.OnUdpSendEvent;
+
+                return Disposable.Create(() => { NextUdpEvent -= obs.OnUdpSendEvent; });
+            }).Publish();
+
+            UdpSendEvents = _connUdpSendEvents.RefCount();
+
+            
+        }
+
+        public void StartUdpSendEvents()
+        {
+            _connUdpSendEvents.Connect();
         }
 
         public NetManager(INetEventListener listener, IAsyncUdpMessageSender sender) : this(listener)
         {
-            _udpMessageSender = sender;
+            //_udpMessageSender = sender;
         }
         internal void ConnectionLatencyUpdated(NetPeer fromPeer, int latency)
         {
@@ -377,9 +427,17 @@ namespace LiteNetLib
             //    return 0;
 
             //SocketError errorCode = 0;
-            // TODO: pub event to ringbuffer
+
             int result = 0;// _socket.SendTo(message, start, length, remoteEndPoint, ref errorCode);
-            _udpMessageSender.Send(message, start, length, remoteEndPoint, UdpSendType.SendTo);
+
+            // TODO: pool
+            // ReSharper disable once PossibleNullReferenceException
+            NextUdpEvent(new UdpSendEvent
+                {Message = message, Start = start, RemoteEndPoint = remoteEndPoint, Length = length});
+            
+            //_udpMessageSender.Send(message, start, length, remoteEndPoint, UdpSendType.SendTo);
+            
+            
             //NetPeer fromPeer;
             //switch (errorCode)
             //{

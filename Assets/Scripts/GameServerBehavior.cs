@@ -1,36 +1,53 @@
 ﻿using System;
 using AiUnity.NLog.Core;
-using Assets.Scripts.Network;
-using LiteNetLib;
-using UnityEngine;
-using UniRx;
 using Assets.Scripts.CharacterControllerStuff;
+using Assets.Scripts.Network;
 using Assets.Scripts.Network.StreamSystems;
 using KinematicCharacterController;
-
+using LiteNetLib;
+using UniRx;
+using UnityEngine;
 
 namespace Assets.Scripts
 {
+    // ReSharper disable once UnusedMember.Global
     public class GameServerBehavior : MonoBehaviour
     {
-        private UdpNetworkBehavior _network;
+        private NLogger _log;
+        private NetManager _netManager;
+        private TimeSpan _timeoutCheckFrequency;
+        private UdpServer _udpRx;
 
-        public GameObject ObjectPrefab;
+        /// <summary>
+        ///     The local endpoint address to bind to
+        /// </summary>
+        public string BindAddress = "0.0.0.0";
+
+        /// <summary>
+        ///     The local endpoint port to bind the socket to
+        /// </summary>
+        public int BindPort = 40069;
+
+        /// <summary>
+        ///     How often the CheckTimeout logic should run
+        /// </summary>
+        public float CheckTimeoutFrequencySeconds = 20.0f;
+
+        //public GameObject ObjectPrefab;
+
         public GameObject PlayerPrefab;
 
-        private TimeSpan _timeoutCheckFrequency;
-
-        private NLogger _log;
         // Start is called before the first frame update
+        // ReSharper disable once UnusedMember.Local
         private void Start()
         {
             _log = NLogManager.Instance.GetLogger(this);
-            _timeoutCheckFrequency = TimeSpan.FromSeconds(5);
+            _timeoutCheckFrequency = TimeSpan.FromSeconds(CheckTimeoutFrequencySeconds);
 
-            _network = new UdpNetworkBehavior
+            _udpRx = new UdpServer
             {
-                ShouldConnect = false,
-                ShouldBind = true
+                BindPort = BindPort,
+                BindAddress = BindAddress
             };
 
             KinematicCharacterSystem.AutoSimulation = false;
@@ -53,11 +70,21 @@ namespace Assets.Scripts
 
             IObservable<long> generatePacketEvents = connGeneratePacketEvents.RefCount();
 
-            NetManagerRx netRx = new NetManagerRx(_network.RNetManager, _network.UdpMessageStream);
+            _netManager = new NetManager(null) {DisconnectTimeout = 5};
+
+            NetManagerRx netRx = new NetManagerRx(_netManager, _udpRx.UdpMessageStream);
+
+            Observable.EveryLateUpdate().Sample(_timeoutCheckFrequency).Subscribe(_ => { _netManager.Update(); });
+
+            _netManager.UdpSendEvents
+                .Subscribe(e =>
+                {
+                    _udpRx.OutgoingUdpMessageSender.Send(e.Message, e.Start, e.Length, e.RemoteEndPoint,
+                        UdpSendType.SendTo);
+                });
 
             IObservable<NetEvent> receivedDataStream = netRx.ReceivedNetEventStream
-                .Where(evt => evt.Type == NetEvent.EType.Receive)
-                .Do(_ => _log.Debug($"Received data: {_.DataReader.RawDataSize}")); 
+                .Where(evt => evt.Type == NetEvent.EType.Receive);
 
             netRx.ReceivedNetEventStream
                 .Where(evt => evt.Type == NetEvent.EType.ConnectionRequest)
@@ -66,14 +93,9 @@ namespace Assets.Scripts
 
             netRx.ReceivedNetEventStream
                 .Where(evt => evt.Type == NetEvent.EType.Connect)
-                .Do(evt => _log.Info("Client Connected."))
+                .Do(evt => _log.Info($"Client Connected with id: {evt.Peer.Id} "))
                 .Subscribe(evt =>
                 {
-                    GameClient client = new GameClient(evt.Peer, true)
-                    {
-                        CurrentState = GameClient.State.Playing
-                    };
-
                     GameObject clientGameObj = Instantiate(PlayerPrefab);
 
                     KccControlledObject kcc = new KccControlledObject
@@ -89,48 +111,51 @@ namespace Assets.Scripts
                     {
                         CurrentlyControlledObject = kcc
                     };
-
-
-                    //client.ControlledObjectSys.CurrentlyControlledObject = kcc;
                     
-                    // could add this to a merge that the server subscribes to which groups all the client events 
-
                     PacketStreamRx psRx = new PacketStreamRx(
-                        receivedDataStream.Where(e => e.Peer.Id == evt.Peer.Id), 
+                        receivedDataStream.Where(e => e.Peer.Id == evt.Peer.Id),
                         Observable.EveryUpdate(),
                         generatePacketEvents);
 
-                    psRx.GamePacketStream
-                        .Do(_ => _log.Debug("Received game packet stream event"))
+                    IDisposable incomingPacketSub = psRx.GamePacketStream
                         .Select(kccServer.GetClientEventFromStream)
-                        //.BatchFrame(0, FrameCountType.FixedUpdate)
                         .Subscribe(controlledObjEvent => { kccServer.HandleClientEvent(controlledObjEvent); });
 
-                    psRx.OutgoingPacketStream
-                        .Do(_ => _log.Debug("Writing to packet stream"))
+                    IDisposable outgoingPacketSub = psRx.OutgoingPacketStream
                         .Subscribe(stream =>
                         {
                             kccServer.WriteToPacketStream(stream);
-                            client.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
+                            evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
 
-                    psRx.TransmissionNotificationStream
-                        .Do(not => _log.Debug($"Next notification: {not}"))
+                    IDisposable transmissionNotificationSub = psRx.TransmissionNotificationStream
                         .Subscribe(notification =>
                         {
                             //client.Replication.ReceiveNotification(notification);
                         });
 
+                    // Take(1) ensures this will dispose after the first disconnect event it receives
+                    netRx.ReceivedNetEventStream
+                        .Where(e => e.Type == NetEvent.EType.Disconnect && e.Peer.Id == evt.Peer.Id)
+                        .Take(1)
+                        .Do(_ => Debug.Log($"CLIENT: {_.Peer.Id} disconnected!"))
+                        .Subscribe(
+                            _ =>
+                            {
+                                Destroy(clientGameObj);
+                                transmissionNotificationSub.Dispose();
+                                outgoingPacketSub.Dispose();
+                                incomingPacketSub.Dispose();
+                            });
+
                     psRx.Start();
                 });
 
             // Start network thread
-            _network.Start();
+            _netManager.StartUdpSendEvents();
+            _udpRx.Start();
             netRx.Start();
-
             connGeneratePacketEvents.Connect();
         }
-
-
     }
-} 
+}

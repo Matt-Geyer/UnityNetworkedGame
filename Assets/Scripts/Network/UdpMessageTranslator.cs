@@ -4,7 +4,7 @@ using Disruptor;
 
 namespace Assets.Scripts.Network
 {
-    public class UdpMessageTranslator : IEventTranslatorThreeArg<UdpMessage, byte[], int, IPEndPoint>
+    public class UdpMessageTranslator : IEventTranslatorThreeArg<UdpMessage, byte[], int, IPEndPoint>, IEventTranslatorOneArg<UdpMessage, UdpMessage>
     {
         public static UdpMessageTranslator StaticInstance = new UdpMessageTranslator();
 
@@ -14,6 +14,14 @@ namespace Assets.Scripts.Network
             @event.Endpoint.Port = arg2.Port;
             @event.DataSize = arg1;
             Buffer.BlockCopy(arg0, 0, @event.Buffer, 0, (int)arg1);
+        }
+
+        public void TranslateTo(UdpMessage @event, long sequence, UdpMessage arg0)
+        {
+            @event.Endpoint.Address = arg0.Endpoint.Address;
+            @event.Endpoint.Port = arg0.Endpoint.Port;
+            @event.DataSize = arg0.DataSize;
+            Buffer.BlockCopy(arg0.Buffer, 0, @event.Buffer, 0, arg0.DataSize);
         }
     }
 }
