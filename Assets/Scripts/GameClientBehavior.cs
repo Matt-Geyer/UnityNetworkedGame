@@ -13,15 +13,16 @@ namespace Assets.Scripts
     public class GameClientBehavior : MonoBehaviour
     {
         private GameClient _client;
-        private State _currentState;
+ 
         private NLogger _log;
 
         private UdpNetworkBehavior _network;
 
-        public GameObject EntityPrefab;
+        //public GameObject EntityPrefab;
         public GameObject PlayerPrefab;
 
         // Start is called before the first frame update
+        // ReSharper disable once UnusedMember.Local
         private void Start()
         {
             _log = NLogManager.Instance.GetLogger(this);
@@ -40,8 +41,6 @@ namespace Assets.Scripts
                     KinematicCharacterSystem.PhysicsMovers,
                     KinematicCharacterSystem.PhysicsMovers.Count);
             });
-
-            _currentState = State.Connecting;
 
             _network = new UdpNetworkBehavior
             {
@@ -66,7 +65,6 @@ namespace Assets.Scripts
                 .Do(_ => _log.Info("Connected to server"))
                 .Subscribe(evt =>
                 {
-                    _currentState = State.Playing;
                     _client = new GameClient(evt.Peer, false);
 
                     GameObject playerObj = Instantiate(PlayerPrefab);
@@ -85,7 +83,7 @@ namespace Assets.Scripts
                     //_client.ControlledObjectSys.CurrentlyControlledObject = pco;
                     kccClient.CurrentlyControlledObject = pco;
 
-                    Observable.EveryUpdate().Sample(TimeSpan.FromMilliseconds(Time.fixedDeltaTime)).Subscribe(_ =>
+                    Observable.EveryFixedUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Subscribe(_ =>
                     {
                         kccClient.UpdateControlledObject();
                     });
@@ -125,21 +123,10 @@ namespace Assets.Scripts
                     psRx.Start();
                 });
 
-
-            //GameClientRx reactor =
-            //    new GameClientRx(_network.RNetManager, _network.NetEventStream, EntityPrefab, PlayerPrefab);
-
             _network.Start();
             netRx.Start();
 
             connGeneratePacketEvents.Connect();
-        }
-
-        private enum State
-        {
-            Connecting,
-            Ready,
-            Playing
         }
     }
 }
