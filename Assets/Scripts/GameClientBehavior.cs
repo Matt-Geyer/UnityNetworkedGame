@@ -11,10 +11,9 @@ using UnityEngine;
 
 namespace Assets.Scripts
 {
+    // ReSharper disable once UnusedMember.Global
     public class GameClientBehavior : MonoBehaviour
     {
-        private GameClient _client;
-
         private NLogger _log;
         private NetManager _netManager;
         private TimeSpan _timeoutCheckFrequency;
@@ -64,8 +63,6 @@ namespace Assets.Scripts
 
             physicsFixedUpdateEvents.Subscribe(_ =>
             {
-                //Debug.Log($"***************************** PHYSICS: {Time.frameCount} ***********************");
-
                 // Update physics
                 KinematicCharacterSystem.Simulate(
                     Time.fixedDeltaTime,
@@ -113,9 +110,7 @@ namespace Assets.Scripts
                 .Subscribe(evt =>
                 {
                     connectSub.Dispose();
-
-                    _client = new GameClient(evt.Peer, false);
-
+                    
                     GameObject playerObj = Instantiate(PlayerPrefab);
 
                     KccControlledObject pco = new KccControlledObject
@@ -129,7 +124,6 @@ namespace Assets.Scripts
 
                     pco.Controller.Motor.SetPosition(new Vector3(0, 2, 0));
 
-                    //_client.ControlledObjectSys.CurrentlyControlledObject = pco;
                     kccClient.CurrentlyControlledObject = pco;
 
                     inputFixedUpdateEvents.Subscribe(_ => { kccClient.UpdateControlledObject(); });
@@ -161,7 +155,7 @@ namespace Assets.Scripts
                         .Subscribe(stream =>
                         {
                             kccClient.WriteToPacketStream(stream);
-                            _client.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
+                            evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
 
                     psRx.TransmissionNotificationStream

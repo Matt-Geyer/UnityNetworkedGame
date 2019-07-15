@@ -17,7 +17,6 @@ namespace Assets.Scripts.Network
     {
         private readonly CancellationTokenSource _cancellationSource;
         private readonly IConnectableObservable<UdpMessage> _connRingBufferReceivedUdpMessageStream;
-        private readonly UdpSocketListenerRx _listenerRx;
         private readonly NLogger _log;
         private readonly EventPoller<OutgoingUdpMessage> _outgoingMessagePoller;
         private readonly Thread _processOutgoing;

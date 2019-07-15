@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using AiUnity.NLog.Core;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -136,7 +135,7 @@ namespace Assets.Scripts.Network.StreamSystems
         }
 
         public void Start()
-        {
+        {   
             _connReaderStream.Connect();
             _connNotificationStream.Connect();
             _connOutgoingPacketStream.Connect();
@@ -189,10 +188,6 @@ namespace Assets.Scripts.Network.StreamSystems
                 // Notify based on sequences remaining in flag
                 GenerateNotificationsFromAckFlagAndUpdateSeqLastNotified(_packetAckFlag);
             }
-            
-
-           
-
         }
 
         private void OnAckedTransmission(PacketTransmissionRecord record)

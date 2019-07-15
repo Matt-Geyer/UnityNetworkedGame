@@ -8,68 +8,6 @@ using UnityEngine;
 
 namespace Assets.Scripts.Network
 {
-    public class UdpSocketListenerRx
-    {
-        public IObservable<UdpMessage> ReceivedMessageStream;
-
-        public UdpSocket Socket;
-        private readonly IConnectableObservable<UdpMessage> _connStream;
-
-        public UdpSocketListenerRx(UdpSocket socket)
-        {
-
-            _connStream = Observable.Create<UdpMessage>(observer =>
-            {
-
-                CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
-                CancellationToken cancel = cancellationTokenSource.Token;
-
-                Debug.Log("*************** UdpMESSAGE SUBUFSDEFDS***********");
-
-                Thread t = new Thread(() =>
-                {
-                    EndPoint receiveFromEp = new IPEndPoint(IPAddress.Any, 0);
-                    byte[] receiveBytes = new byte[1024];
-                    Socket = socket;
-                    
-                    while (!cancel.IsCancellationRequested)
-                    {
-                        try
-                        {
-                            int bytesRead = Socket.Socket.ReceiveFrom(receiveBytes, SocketFlags.None, ref receiveFromEp);
-
-                            if (bytesRead <= 0) continue;
-
-                            observer.OnNext(new UdpMessage { Buffer = receiveBytes, DataSize = bytesRead, Endpoint = (IPEndPoint)receiveFromEp });
-
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError(e);
-                        }
-                    }
-                });
-
-                t.Start();
-
-                return Disposable.Create(() => 
-                {
-                    cancellationTokenSource.Cancel();
-                    t.Join();
-                });
-            }).Publish();
-
-            ReceivedMessageStream = _connStream.RefCount();
-        }
-
-        public void Start()
-        {
-            _connStream.Connect();
-        }
-    }
-
-
     public class AsyncUdpSocketListener
     {
         public delegate void UdpMessageReceived(byte[] buffer, int bufferLength, IPEndPoint remoteEndpoint);

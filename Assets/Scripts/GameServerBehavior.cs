@@ -31,7 +31,7 @@ namespace Assets.Scripts
         /// <summary>
         ///     How often the CheckTimeout logic should run
         /// </summary>
-        public float CheckTimeoutFrequencySeconds = 20.0f;
+        public float CheckTimeoutFrequencySeconds = 1.0f;
 
         //public GameObject ObjectPrefab;
 
