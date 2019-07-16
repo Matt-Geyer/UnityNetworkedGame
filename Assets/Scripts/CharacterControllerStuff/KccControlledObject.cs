@@ -27,7 +27,7 @@ namespace Assets.Scripts.CharacterControllerStuff
         {
             KinematicCharacterMotorState motorState = Controller.Motor.GetState();
 
-            KccControlledObjectSystemClient.DeserializeMotorState(ref motorState, reader);
+            SerializationHelper.DeserializeMotorState(ref motorState, reader);
             
             Controller.Motor.ApplyState(motorState);
 
@@ -39,7 +39,7 @@ namespace Assets.Scripts.CharacterControllerStuff
 
         public override void Serialize(NetDataWriter writer)
         {
-            KccControlledObjectSystemClient.SerializeMotorState(Controller.Motor.GetState(), writer);
+            SerializationHelper.SerializeMotorState(Controller.Motor.GetState(), writer);
         }
     }
 }

@@ -25,34 +25,6 @@ namespace Assets.Scripts.CharacterControllerStuff
 
         private readonly SlidingList<MoveInfo> _simpleWindow;
 
-        public static void SerializeVector3(Vector3 vec, NetDataWriter writer)
-        {
-            writer.Put(vec.x);
-            writer.Put(vec.y);
-            writer.Put(vec.z);
-        }
-
-        public static void DeserializeVector3(ref Vector3 vec, NetDataReader reader)
-        {
-            vec.x = reader.GetFloat();
-            vec.y = reader.GetFloat();
-            vec.z = reader.GetFloat();
-        }
-
-        public static void SerializeMotorState(KinematicCharacterMotorState state, NetDataWriter writer)
-        {
-            SerializeVector3(state.Position, writer);
-            SerializeVector3(state.AttachedRigidbodyVelocity, writer);
-            SerializeVector3(state.BaseVelocity, writer);
-        }
-
-        public static void DeserializeMotorState(ref KinematicCharacterMotorState state, NetDataReader reader)
-        {
-            DeserializeVector3(ref state.Position, reader);
-            DeserializeVector3(ref state.AttachedRigidbodyVelocity, reader);
-            DeserializeVector3(ref state.BaseVelocity, reader);
-        }
-
         public KccControlledObjectSystemClient()
         {
             _log = NLogManager.Instance.GetLogger(this);
@@ -75,7 +47,7 @@ namespace Assets.Scripts.CharacterControllerStuff
             {
                 SeqLastProcessed = stream.GetUShort()
             };
-            DeserializeMotorState(ref frame.MotorState, stream);
+            SerializationHelper.DeserializeMotorState(ref frame.MotorState, stream);
             return frame;
         }
 
@@ -169,7 +141,7 @@ namespace Assets.Scripts.CharacterControllerStuff
 
             var serverState = new KinematicCharacterMotorState();
 
-            DeserializeMotorState(ref serverState, stream);
+            SerializationHelper.DeserializeMotorState(ref serverState, stream);
 
             //serverState.Deserialize(stream);
 
