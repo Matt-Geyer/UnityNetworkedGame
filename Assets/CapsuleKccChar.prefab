@@ -152,7 +152,7 @@ GameObject:
   - component: {fileID: 1067795097198723248}
   - component: {fileID: 4622439202569312831}
   m_Layer: 0
-  m_Name: KccChar
+  m_Name: CapsuleKccChar
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

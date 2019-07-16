@@ -19,7 +19,7 @@ namespace Assets.Scripts.CharacterControllerStuff
                 MoveAxisRight = horizontalMovement
             };
 
-            Controller.SetInputs(ref inputs);
+            //Controller.SetInputs(ref inputs);
 
         }
 

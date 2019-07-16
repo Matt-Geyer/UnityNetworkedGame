@@ -7,6 +7,8 @@ namespace Assets.Scripts.Network.StreamSystems
     {
         public Vector3 MoveDirection;
 
+        public Quaternion CameraRotation;
+
         public ushort PressedCount;
 
         public ushort[] Pressed;

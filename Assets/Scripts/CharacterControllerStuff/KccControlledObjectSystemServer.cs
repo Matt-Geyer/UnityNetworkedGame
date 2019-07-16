@@ -81,7 +81,7 @@ namespace Assets.Scripts.CharacterControllerStuff
             // This should always have at least one new move but up to 3
             for (int j = i; j <= 2; j++)
             {
-                //_log.Debug($"Looking at _playerInputsToTransmit[{j}]");
+                _log.Debug($"Looking at _playerInputsToTransmit[{j}] - {evt.PlayerInputs[j].MoveDirection}");
                 //_log.Debug($"Applying input with sequence: {_receivedPlayerInputs[j].Seq} to controlled object");
                 //_log.Debug($"Object position before: {CurrentlyControlledObject.Entity.transform.position}");
                 

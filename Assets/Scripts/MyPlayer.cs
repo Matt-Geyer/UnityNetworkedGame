@@ -104,7 +104,7 @@ namespace Assets.Scripts
             Vector3 localDir = Character.transform.InverseTransformDirection(moveDir);
 
             // Apply inputs to character
-            Character.SetInputs(ref characterInputs);
+            //Character.SetInputs(ref characterInputs);
 
             _walkBlendTree.State.Playable.SetFloat("RelativeVertical", moveDir.z);
             _walkBlendTree.State.Playable.SetFloat("RelativeHorizontal", moveDir.x);

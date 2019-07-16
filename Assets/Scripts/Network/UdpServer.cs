@@ -24,7 +24,7 @@ namespace Assets.Scripts.Network
         private readonly Queue<UdpMessage> _receivedUdpMessages;
         private readonly UdpSocket _socket;
         private readonly AsyncUdpSocketListener _socketListener;
-        private readonly IConnectableObservable<UdpMessage> _socketReceivedUdpMessageStream;
+        private readonly IObservable<UdpMessage> _socketReceivedUdpMessageStream;
         private readonly AsyncUdpSocketSender _socketSender;
 
         /// <summary>
@@ -48,6 +48,7 @@ namespace Assets.Scripts.Network
         public RingBufferOutgoingUdpMessageSender OutgoingUdpMessageSender;
 
         public IObservable<UdpMessage> UdpMessageStream;
+        private IDisposable _socketStreamSub;
 
         public UdpServer()
         {
@@ -56,6 +57,7 @@ namespace Assets.Scripts.Network
             // UDP Socket Listener/Sender initialization
             _socket = new UdpSocket();
             _socketSender = new AsyncUdpSocketSender(_socket);
+            _socket.Socket.ReceiveTimeout = 1000;
 
             // Init ring buffers
             _receivedMessageBuffer = RingBuffer<UdpMessage>.Create(
@@ -99,7 +101,8 @@ namespace Assets.Scripts.Network
                     EndPoint receiveFromEp = new IPEndPoint(IPAddress.Any, 0);
                     byte[] receiveBytes = new byte[1400];
 
-                    while (!cancel.IsCancellationRequested)
+                    while (!cancellationTokenSource.IsCancellationRequested)
+                    {
                         try
                         {
                             int bytesRead =
@@ -110,11 +113,28 @@ namespace Assets.Scripts.Network
                             observer.OnNext(new UdpMessage
                                 {Buffer = receiveBytes, DataSize = bytesRead, Endpoint = (IPEndPoint) receiveFromEp});
                         }
+                        catch (SocketException se)
+                        {
+                            // ReSharper disable once SwitchStatementMissingSomeCases
+                            switch (se.SocketErrorCode)
+                            {
+                                case SocketError.Interrupted:
+                                case SocketError.ConnectionReset:
+                                case SocketError.MessageSize:
+                                case SocketError.TimedOut:
+                                    Task.Delay(100).Wait();
+                                    break;
+                                default:
+                                    _log.Error(se, "Udp socket");
+                                    break;
+                            }
+                        }
                         catch (Exception e)
                         {
                             Debug.LogError(e);
                             Task.Delay(200).Wait();
                         }
+                    }
                 });
 
                 thread.Start();
@@ -122,23 +142,23 @@ namespace Assets.Scripts.Network
                 return Disposable.Create(() =>
                 {
                     cancellationTokenSource.Cancel();
-                    thread.Join();
                 });
-            }).Publish();
+            });
 
+            // Every update poll the RingBuffer and emit any UdpMessages
             _connRingBufferReceivedUdpMessageStream = Observable.Create<UdpMessage>(observer =>
             {
                 return Observable.EveryUpdate().Subscribe(_ =>
                 {
                     receivedMessagePoller.Poll(HandleMessagePollerEvent);
-
+        
                     for (int i = _receivedUdpMessages.Count; i > 0; i--)
                         observer.OnNext(_receivedUdpMessages.Dequeue());
                 });
             }).Publish();
 
             // Expose the stream of UdpMessages polled off the RingBuffer for application to process
-            UdpMessageStream = _connRingBufferReceivedUdpMessageStream.RefCount().AsObservable();
+            UdpMessageStream = _connRingBufferReceivedUdpMessageStream.RefCount();
         }
 
 
@@ -153,12 +173,20 @@ namespace Assets.Scripts.Network
             _processOutgoing.Start(new object[] {_socketSender, _outgoingMessagePoller, _cancellationSource.Token});
 
             // Subscribe to the stream of UdpMessages coming off of the socket.. this will happen off the main thread
-            _socketReceivedUdpMessageStream
+            _socketStreamSub = _socketReceivedUdpMessageStream
                 .Subscribe(msg => { _receivedMessageBuffer.PublishEvent(UdpMessageTranslator.StaticInstance, msg); });
 
             // Start the streams
-            _socketReceivedUdpMessageStream.Connect();
+            //_socketReceivedUdpMessageStream.Connect();
             _connRingBufferReceivedUdpMessageStream.Connect();
+        }
+
+        public void Stop()
+        {
+            _log.Info("Stopping UdpServer threads");
+            _cancellationSource.Cancel();
+            _processOutgoing.Join();
+            _socketStreamSub.Dispose();
         }
 
         private bool HandleMessagePollerEvent(UdpMessage message, long sequence, bool endOfBatch)

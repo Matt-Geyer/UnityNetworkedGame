@@ -1,5 +1,6 @@
 ﻿using Assets.Scripts.Network.StreamSystems;
 using KinematicCharacterController;
+using UnityEngine;
 
 namespace Assets.Scripts.CharacterControllerStuff
 {
@@ -9,5 +10,11 @@ namespace Assets.Scripts.CharacterControllerStuff
         public UserInputSample UserInput;
 
         public KinematicCharacterMotorState MotorState;
+
+        public MoveInfo()
+        {
+            UserInput = new UserInputSample {MoveDirection = new Vector3()};
+        }
+
     }
 }

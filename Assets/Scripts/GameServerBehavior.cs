@@ -66,7 +66,7 @@ namespace Assets.Scripts
             });
 
             IConnectableObservable<long> connGeneratePacketEvents =
-                Observable.EveryUpdate().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
+                Observable.EveryEndOfFrame().Sample(TimeSpan.FromSeconds(Time.fixedDeltaTime)).Publish();
 
             IObservable<long> generatePacketEvents = connGeneratePacketEvents.RefCount();
 
@@ -79,8 +79,7 @@ namespace Assets.Scripts
             _netManager.UdpSendEvents
                 .Subscribe(e =>
                 {
-                    _udpRx.OutgoingUdpMessageSender.Send(e.Message, e.Start, e.Length, e.RemoteEndPoint,
-                        UdpSendType.SendTo);
+                    _udpRx.OutgoingUdpMessageSender.Send(e.Message, e.Start, e.Length, e.RemoteEndPoint, UdpSendType.SendTo);
                 });
 
             IObservable<NetEvent> receivedDataStream = netRx.ReceivedNetEventStream
@@ -117,14 +116,53 @@ namespace Assets.Scripts
                         Observable.EveryUpdate(),
                         generatePacketEvents);
 
+                    int seqLastProcessed = -1;
+
                     IDisposable incomingPacketSub = psRx.GamePacketStream
                         .Select(kccServer.GetClientEventFromStream)
-                        .Subscribe(controlledObjEvent => { kccServer.HandleClientEvent(controlledObjEvent); });
+                        .Do(_ => _log.Debug($"Got controlledObj event: {_.PlayerInputs[2].Seq}"))
+                        .Subscribe(controlledObjEvent =>
+                        {
+                            // In a 0 packet loss scenario Items [1] was last sequence and input [2] is this sequence
+                            // but we will look further back, and if they are all new then apply all 3 moves        
+                            ushort nextMoveSeq = (ushort)(seqLastProcessed + 1);
+                            _log.Debug($"LastProcessedMoveSeq: {seqLastProcessed} NextMove: {nextMoveSeq}");
+                            int i = 2;
+                            for (; i >= 0; i--)
+                            {
+                                _log.Debug($"_playerInputsToTransmit[{i}].seq: {controlledObjEvent.PlayerInputs[i].Seq}");
+                                if (controlledObjEvent.PlayerInputs[i].Seq == nextMoveSeq) break;
+                            }
+
+                            // if nextMoveSeq isn't found then i will be -1
+                            if (i == -1)
+                            {
+                                if (!SequenceHelper.SeqIsAheadButInsideWindow(nextMoveSeq, controlledObjEvent.PlayerInputs[0].Seq, 360))
+                                {
+                                    _log.Debug($"No player moves since sequence: {seqLastProcessed}");
+                                    // CurrentlyControlledObject.ApplyMoveDirection(0,0);
+                                    return;
+                                }
+
+                                i = 0;
+                            }
+
+                            // This should always have at least one new move but up to 3
+                            for (int j = i; j <= 2; j++)
+                            {
+                                _log.Debug($"Looking at _playerInputsToTransmit[{j}] - {controlledObjEvent.PlayerInputs[j].MoveDirection}");
+                                kcc.Controller.SetInputs(ref controlledObjEvent.PlayerInputs[j]);
+                                // simulate?
+                                seqLastProcessed = controlledObjEvent.PlayerInputs[j].Seq;
+                            }
+                        });
 
                     IDisposable outgoingPacketSub = psRx.OutgoingPacketStream
                         .Subscribe(stream =>
                         {
-                            kccServer.WriteToPacketStream(stream);
+                            stream.Put((ushort)seqLastProcessed);
+                            kcc.Serialize(stream);
+
                             evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
 
@@ -157,5 +195,12 @@ namespace Assets.Scripts
             netRx.Start();
             connGeneratePacketEvents.Connect();
         }
+
+        // ReSharper disable once UnusedMember.Local
+        private void OnDestroy()
+        {
+            _udpRx.Stop();
+        }
+
     }
 }
