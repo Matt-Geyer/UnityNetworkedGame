@@ -116,9 +116,16 @@ namespace Assets.Scripts
                         Observable.EveryUpdate(),
                         generatePacketEvents);
 
+                    EventSystemRx eventRx = new EventSystemRx();
+                    int tempI = 0;
+                    Observable.EveryFixedUpdate().SampleFrame(10).Subscribe(_ =>
+                    {
+                        eventRx.QueueEvent(new TestEvent {Message = $"WHAT UP {tempI++}", IsReliable = true});
+                    });
+
                     int seqLastProcessed = -1;
 
-                    IDisposable incomingPacketSub = psRx.GamePacketStream
+                    IDisposable controlledObjectEvents = psRx.GamePacketStream
                         .Select(kccServer.GetClientEventFromStream)
                         .Do(_ => _log.Debug($"Got controlledObj event: {_.PlayerInputs[2].Seq}"))
                         .Subscribe(controlledObjEvent =>
@@ -157,36 +164,47 @@ namespace Assets.Scripts
                             }
                         });
 
+                    IDisposable readUngEvents = psRx.GamePacketStream.Subscribe(eventRx.ReadStream);
+
+
                     IDisposable outgoingPacketSub = psRx.OutgoingPacketStream
                         .Subscribe(stream =>
                         {
+                            // controlled object sys
                             stream.Put((ushort)seqLastProcessed);
                             kcc.Serialize(stream);
+
+                            // rep sys
+
+                            // event sys
+                            eventRx.WriteToStream(stream);
 
                             evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
 
                     IDisposable transmissionNotificationSub = psRx.TransmissionNotificationStream
-                        .Subscribe(notification =>
+                        .Subscribe(received =>
                         {
-                            //client.Replication.ReceiveNotification(notification);
+                            eventRx.HandleTransmissionNotification(received);
                         });
 
                     // Take(1) ensures this will dispose after the first disconnect event it receives
                     netRx.ReceivedNetEventStream
                         .Where(e => e.Type == NetEvent.EType.Disconnect && e.Peer.Id == evt.Peer.Id)
                         .Take(1)
-                        .Do(_ => Debug.Log($"CLIENT: {_.Peer.Id} disconnected!"))
+                        .Do(_ => _log.Info($"CLIENT: {_.Peer.Id} disconnected!"))
                         .Subscribe(
                             _ =>
                             {
                                 Destroy(clientGameObj);
                                 transmissionNotificationSub.Dispose();
                                 outgoingPacketSub.Dispose();
-                                incomingPacketSub.Dispose();
+                                controlledObjectEvents.Dispose();
+                                readUngEvents.Dispose();
                             });
 
                     psRx.Start();
+                    eventRx.Start();
                 });
 
             // Start network thread

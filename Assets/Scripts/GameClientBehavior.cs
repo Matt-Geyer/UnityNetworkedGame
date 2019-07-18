@@ -300,6 +300,13 @@ namespace Assets.Scripts
                         Observable.EveryUpdate(),
                         generatePacketEvents);
                     
+                    EventSystemRx eventRx = new EventSystemRx();
+
+                    eventRx.EventStream.Subscribe(ungEvent =>
+                    {
+                        Debug.Log("**************GOT UNG EVENT ********************");
+                    });
+
                     psRx.GamePacketStream
                         .Select(stream =>
                         {
@@ -316,6 +323,11 @@ namespace Assets.Scripts
                             for (int i = 0; i < serverUpdates.Count; i++) updateQueue.Enqueue(serverUpdates[i]);
                         });
 
+                    psRx.GamePacketStream.Subscribe(stream =>
+                    {
+                        eventRx.ReadStream(stream);
+                    });
+
                     psRx.OutgoingPacketStream
                         .Subscribe(stream =>
                         {
@@ -323,19 +335,23 @@ namespace Assets.Scripts
                             lastThreeMoves[0].Serialize(stream);
                             lastThreeMoves[1].Serialize(stream);
                             lastThreeMoves[2].Serialize(stream);
+                           
+                            eventRx.WriteToStream(stream);
+
                             evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
 
                     psRx.TransmissionNotificationStream
                         .Subscribe(notification =>
                         {
-                            //client.Replication.ReceiveNotification(notification);
+                            eventRx.HandleTransmissionNotification(notification);
                         });
 
 
                     networkPlayerInputStream.Connect();
 
                     psRx.Start();
+                    eventRx.Start();
                 });
 
             netManager.StartUdpSendEvents();
@@ -343,6 +359,7 @@ namespace Assets.Scripts
             netRx.Start();
             connFixedUpdateEventStream.Connect();
             connGeneratePacketEvents.Connect();
+            
         }
 
         private enum FixedUpdateLoopEvents
@@ -650,6 +667,16 @@ namespace Assets.Scripts
                         Observable.EveryUpdate(),
                         generatePacketEvents);
 
+                    EventSystemRx eventRx = new EventSystemRx();
+
+                    eventRx.EventStream
+                        .Where(ungEvent => ungEvent.GetType() == typeof(TestEvent))
+                        .Select(ungEvent => ungEvent as TestEvent)
+                        .Subscribe(ungEvt => { Debug.Log($"********** GOT EVENT: {ungEvt.Message} *************"); });
+
+
+
+
                     // The order of these subscription sort of matters, or at least has implications that are sort of hidden 
                     // by this packet stream reactor.. so i might need to pull that out 
                     psRx.GamePacketStream
@@ -660,6 +687,8 @@ namespace Assets.Scripts
                             for (int i = 0; i < serverUpdates.Count; i++) updateQueue.Enqueue(serverUpdates[i]);
                         });
 
+                    psRx.GamePacketStream.Subscribe(eventRx.ReadStream);
+
                     psRx.OutgoingPacketStream
                         .Subscribe(stream =>
                         {
@@ -668,22 +697,23 @@ namespace Assets.Scripts
                             lastThreeMoves[0].Serialize(stream);
                             lastThreeMoves[1].Serialize(stream);
                             lastThreeMoves[2].Serialize(stream);
-
                             _log.Debug($"After Wrote player move sequences: {stream.Length}");
+
+                            eventRx.WriteToStream(stream);
 
                             evt.Peer.Send(stream.Data, 0, stream.Length, DeliveryMethod.Unreliable);
                         });
-
+                    
                     psRx.TransmissionNotificationStream
                         .Subscribe(notification =>
                         {
-                            //client.Replication.ReceiveNotification(notification);
+                            eventRx.HandleTransmissionNotification(notification);
                         });
-
 
                     networkPlayerInputStream.Connect();
 
                     psRx.Start();
+                    eventRx.Start();
                 });
 
             _netManager.StartUdpSendEvents();

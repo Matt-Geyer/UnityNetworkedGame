@@ -78,10 +78,9 @@ namespace Assets.Scripts.Network.StreamSystems
 
             _connNotificationStream = Observable.Create<bool>(observer =>
             {
-                _log.Debug("************************ Notification SUB *******************");
                 return updateNotificationEvents.Subscribe(_ =>
                 {
-                    _log.Debug("Updating notifications");
+                    _log.Debug($"Emitting {_transmissionNotifications.Count} notifications");
                     for (int i = _transmissionNotifications.Count; i > 0; i--)
                         observer.OnNext(_transmissionNotifications.Dequeue());
                 });

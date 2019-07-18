@@ -5,12 +5,15 @@ namespace Assets.Scripts
 {
     public class SetupPersistentObjects : MonoBehaviour
     {
-        // Start is called before the first frame update
-        void Start()
+        void Awake()
         {
             PersistentObjectRep replicatableGameObjectRep = new PersistentObjectRep(() => new ReplicatableGameObject());
             ReplicatableGameObject.StaticObjectRep = replicatableGameObjectRep;
             PersistentObjectManager.RegisterPersistentObject(replicatableGameObjectRep);
+
+            PersistentObjectRep testEventObjectRep = new PersistentObjectRep(() => new TestEvent());
+            TestEvent.StaticObjectRep = testEventObjectRep;
+            PersistentObjectManager.RegisterPersistentObject(testEventObjectRep);
         }
     }
 }
